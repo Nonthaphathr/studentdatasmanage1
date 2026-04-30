@@ -714,7 +714,19 @@ window.deleteStudent = async function(classId, studentDocId){
       // Public student form route — load only settings (need school name/logo); no classroom listener
       await loadSettings();
       window.AppState.isFirebaseReady = true;
-      if(window.bootPublicForm) window.bootPublicForm();
+      // bootPublicForm is defined in a later <script> tag — wait for it
+      var tries = 0;
+      var iv = setInterval(function(){
+        if(typeof window.bootPublicForm === 'function'){
+          clearInterval(iv);
+          try{ window.bootPublicForm(); }
+          catch(e){ console.error('bootPublicForm error', e); document.getElementById('publicForm').innerHTML = '<div style="padding:2rem;text-align:center;color:#b91c1c">เกิดข้อผิดพลาด: '+e.message+'</div>'; }
+        } else if(++tries > 50){
+          clearInterval(iv);
+          console.error('bootPublicForm not found after 5s');
+          document.getElementById('publicForm').innerHTML = '<div style="padding:2rem;text-align:center;color:#b91c1c">ระบบโหลดไม่สำเร็จ — ลองรีเฟรชหน้า</div>';
+        }
+      }, 100);
       return;
     }
     await loadSettings();
@@ -723,7 +735,12 @@ window.deleteStudent = async function(classId, studentDocId){
     if(window.renderMain) window.renderMain();
   }catch(e){
     console.error('boot err', e);
-    window.showToast('Firebase ไม่ตอบสนอง: '+e.message,'error');
+    if(window.IS_PUBLIC_FORM){
+      var pf = document.getElementById('publicForm');
+      if(pf) pf.innerHTML = '<div style="padding:2rem;text-align:center;color:#b91c1c">โหลดข้อมูลโรงเรียนไม่สำเร็จ — ลองรีเฟรชหน้า<br><small>'+e.message+'</small></div>';
+    } else if(window.showToast){
+      window.showToast('Firebase ไม่ตอบสนอง: '+e.message,'error');
+    }
   }
 })();
 </script>
@@ -1118,8 +1135,34 @@ window.deleteStudent = async function(classId, studentDocId){
   }
   window.parseCSVText = parseCSVText;
 
+  // Fix Excel-style date corruption (e.g. "6/12" → "6-Dec" or "12/6/2025") on house number fields
+  function fixDateLikeImport(v){
+    if(v==null) return '';
+    var s = String(v).trim();
+    if(!s) return '';
+    var months = {Jan:1,Feb:2,Mar:3,Apr:4,May:5,Jun:6,Jul:7,Aug:8,Sep:9,Oct:10,Nov:11,Dec:12};
+    var m1 = s.match(/^(\d{1,2})-([A-Za-z]{3})$/);
+    if(m1 && months[m1[2]]){ return m1[1] + '/' + months[m1[2]]; }
+    var m2 = s.match(/^([A-Za-z]{3})-(\d{1,2})$/);
+    if(m2 && months[m2[1]]){ return m2[2] + '/' + months[m2[1]]; }
+    var m3 = s.match(/[A-Za-z]{3}\s+([A-Za-z]{3})\s+(\d{1,2})/);
+    if(m3 && months[m3[1]]){ return parseInt(m3[2],10) + '/' + months[m3[1]]; }
+    var m4 = s.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);
+    if(m4){ return parseInt(m4[3],10) + '/' + parseInt(m4[2],10); }
+    return s;
+  }
+  // Apply date-corruption fix to house-number-like fields in a row
+  function sanitizeRow(row){
+    var fields = ['บ้านเลขที่นักเรียน','บ้านเลขที่ปัจจุบัน','บ้านเลขที่ผู้ปกครอง','บ้านเลขที่บิดา','บ้านเลขที่มารดา'];
+    fields.forEach(function(f){
+      if(row[f]) row[f] = fixDateLikeImport(row[f]);
+    });
+    return row;
+  }
+
   // ═══════════════ Map row → student object ═══════════════
   function mapRowFormatA(row){
+    row = sanitizeRow(row);
     var fullName = (row['ชื่อ-สกุลนักเรียน']||'').trim();
     var gender = inferGender(fullName);
     var phone = row['โทรนักเรียน'] || row['โทรปัจจุบัน'] || row['โทรมือถือผู้ปกครอง'] || '';
@@ -1133,6 +1176,7 @@ window.deleteStudent = async function(classId, studentDocId){
     };
   }
   function mapRowFormatB(row, grade, room){
+    row = sanitizeRow(row);
     var fullName = (row['ชื่อ-สกุล']||'').trim();
     var gender = inferGender(fullName);
     return {
@@ -1574,6 +1618,11 @@ window.deleteStudent = async function(classId, studentDocId){
       '<button class="btn btn-primary" id="stPublicForm">🔗 จัดการลิงก์ฟอร์ม + QR Code</button>'+
       '</div>'+
 
+      '<div class="set-section"><h4>🔧 ซ่อมข้อมูลบ้านเลขที่ที่ Excel แปลงเป็นวันที่</h4>'+
+      '<p class="muted">ตรวจสอบและคืนค่าบ้านเลขที่ที่ถูกแปลงเป็นรูปแบบวันที่ (เช่น "6-Dec" → "6/12") สำหรับนักเรียนทั้งหมด — ใช้ได้ปลอดภัย ไม่กระทบข้อมูลที่ปกติ</p>'+
+      '<button class="btn" id="stFixDates">🔧 ตรวจ &amp; ซ่อมข้อมูล</button>'+
+      '</div>'+
+
       '<div class="set-section"><h4>📍 นำเข้าชื่อหมู่บ้าน / โรงเรียนเดิม</h4>'+
       '<p class="muted">หาก CSV จากระบบสมัครเรียนยังไม่มีคอลัมน์ชื่อหมู่บ้านหรือโรงเรียนเดิม สามารถดาวน์โหลด Template มากรอกเฉพาะคอลัมน์เหล่านี้ แล้วอัปโหลดกลับมาเพื่ออัปเดตข้อมูลในประวัตินักเรียน</p>'+
       '<div class="flex flex-wrap">'+
@@ -1615,6 +1664,7 @@ window.deleteStudent = async function(classId, studentDocId){
     };
     bd.querySelector('#stPromote').onclick = function(){ close(); window.openPromotionTool(); };
     bd.querySelector('#stPublicForm').onclick = function(){ close(); window.openPublicFormManager(); };
+    bd.querySelector('#stFixDates').onclick = function(){ close(); window.fixDateCorruptedHouseNos(); };
     bd.querySelector('#stVillageDl').onclick = function(){ close(); window.exportVillageTemplate(); };
     bd.querySelector('#stVillageUp').onclick = function(){ close(); window.importVillageData(); };
     bd.querySelector('#stBackup').onclick = function(){ close(); window.backupAll(); };
@@ -1835,6 +1885,102 @@ window.deleteStudent = async function(classId, studentDocId){
       }
     };
     input.click();
+  };
+
+  // ═══════════════ Repair date-corrupted house numbers (batch) ═══════════════
+  // Scans every student in every classroom for house number fields that look like
+  // "6-Dec" or other date corruption, and reverts them to "6/12" format.
+  window.fixDateCorruptedHouseNos = async function(){
+    function fixDateLikeStr(v){
+      if(v==null) return '';
+      var s = String(v).trim();
+      if(!s) return '';
+      var months = {Jan:1,Feb:2,Mar:3,Apr:4,May:5,Jun:6,Jul:7,Aug:8,Sep:9,Oct:10,Nov:11,Dec:12};
+      var m1 = s.match(/^(\d{1,2})-([A-Za-z]{3})$/);
+      if(m1 && months[m1[2]]){ return m1[1] + '/' + months[m1[2]]; }
+      var m2 = s.match(/^([A-Za-z]{3})-(\d{1,2})$/);
+      if(m2 && months[m2[1]]){ return m2[2] + '/' + months[m2[1]]; }
+      var m3 = s.match(/[A-Za-z]{3}\s+([A-Za-z]{3})\s+(\d{1,2})/);
+      if(m3 && months[m3[1]]){ return parseInt(m3[2],10) + '/' + months[m3[1]]; }
+      var m4 = s.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);
+      if(m4){ return parseInt(m4[3],10) + '/' + parseInt(m4[2],10); }
+      return s;
+    }
+    var fields = ['บ้านเลขที่นักเรียน','บ้านเลขที่ปัจจุบัน','บ้านเลขที่ผู้ปกครอง','บ้านเลขที่บิดา','บ้านเลขที่มารดา'];
+    try{
+      window.showLoading(true,'กำลังสแกน...');
+      var allClasses = window.AppState.classrooms || [];
+      var planned = [];   // {classId, docId, name, sid, changes:[{field, old, fixed}]}
+      for(var i=0;i<allClasses.length;i++){
+        var cr = allClasses[i];
+        var students = await window.getStudentsOfClass(cr.id, true);
+        students.forEach(function(s){
+          var raw = s.raw || {};
+          var changes = [];
+          fields.forEach(function(f){
+            var orig = raw[f];
+            if(!orig) return;
+            var fixed = fixDateLikeStr(orig);
+            if(fixed && fixed !== String(orig)){
+              changes.push({field:f, old:String(orig), fixed:fixed});
+            }
+          });
+          if(changes.length){
+            planned.push({classId:cr.id, docId:s.id, name:s.fullName||'', sid:s.studentId||'', changes:changes});
+          }
+        });
+      }
+      window.showLoading(false);
+      if(!planned.length){
+        window.showToast('ไม่พบข้อมูลที่ต้องซ่อม ✅','success');
+        return;
+      }
+      // Confirm dialog
+      var msg = '<div style="margin-bottom:10px">พบบ้านเลขที่ที่ต้องซ่อม <strong style="color:#16a34a">'+planned.length+'</strong> รายการ</div>'+
+                '<div style="max-height:240px;overflow:auto;background:#f9fafb;border:1px solid #e5e7eb;border-radius:8px;padding:8px;font-size:12px;line-height:1.6">';
+      planned.slice(0,20).forEach(function(p){
+        msg += '<div style="margin-bottom:4px">• '+window.escHTML(p.name)+' ('+window.escHTML(p.sid)+')';
+        p.changes.forEach(function(ch){
+          msg += '<br>&nbsp;&nbsp;<span style="color:#6b7280">'+window.escHTML(ch.field)+'</span>: <span style="color:#dc2626">'+window.escHTML(ch.old)+'</span> → <strong style="color:#16a34a">'+window.escHTML(ch.fixed)+'</strong>';
+        });
+        msg += '</div>';
+      });
+      if(planned.length>20) msg += '<div style="color:#6b7280;margin-top:4px">... และอีก '+(planned.length-20)+' คน</div>';
+      msg += '</div>';
+      var ok = await window.confirmDialog({
+        title:'ยืนยันการซ่อมข้อมูล',
+        message: msg,
+        confirmText: 'ซ่อมทั้งหมด',
+        cancelText: 'ยกเลิก'
+      });
+      if(!ok) return;
+      // Apply
+      window.showLoading(true,'กำลังซ่อม...');
+      var fns = window.firestore;
+      var batch = fns.writeBatch(window.db);
+      var n=0, total=0;
+      for(var j=0;j<planned.length;j++){
+        var p = planned[j];
+        var ref = fns.doc(window.db, 'classrooms', p.classId, 'students', p.docId);
+        var snap = await fns.getDoc(ref);
+        if(!snap.exists()) continue;
+        var data = snap.data();
+        var newRaw = Object.assign({}, data.raw||{});
+        p.changes.forEach(function(ch){ newRaw[ch.field] = ch.fixed; });
+        batch.update(ref, {raw:newRaw, updatedAt:fns.serverTimestamp()});
+        n++; total++;
+        if(n>=400){ await batch.commit(); batch = fns.writeBatch(window.db); n=0; }
+      }
+      if(n>0) await batch.commit();
+      window.AppState.studentsCache = {};
+      window.showLoading(false);
+      window.showToast('ซ่อมข้อมูลเรียบร้อย '+total+' รายการ','success');
+      if(window.refreshCurrentView) window.refreshCurrentView();
+    }catch(e){
+      console.error(e);
+      window.showLoading(false);
+      window.showToast('ผิดพลาด: '+e.message,'error');
+    }
   };
 
   // ═══════════════ Public form link manager ═══════════════
@@ -2854,6 +3000,30 @@ window.deleteStudent = async function(classId, studentDocId){
   function classLabel(num, room){
     return 'ม.'+num + (room ? '/'+room : '');
   }
+
+  // Fix Excel-style date corruption — values like "6-Dec", "15-Mar", "Sat Dec 06 2025" or
+  // serial numbers should be reverted to "6/12", "15/3" etc.
+  // Returns the fixed string. Safe for non-date inputs (passes through).
+  function fixDateLike(v){
+    if(v==null) return '';
+    var s = String(v).trim();
+    if(!s) return '';
+    var months = {Jan:1,Feb:2,Mar:3,Apr:4,May:5,Jun:6,Jul:7,Aug:8,Sep:9,Oct:10,Nov:11,Dec:12};
+    // "6-Dec", "15-Mar"  →  "6/12", "15/3"
+    var m1 = s.match(/^(\d{1,2})-([A-Za-z]{3})$/);
+    if(m1 && months[m1[2]]){ return m1[1] + '/' + months[m1[2]]; }
+    // "Dec-6", "Mar-15"  →  "6/12", "15/3"
+    var m2 = s.match(/^([A-Za-z]{3})-(\d{1,2})$/);
+    if(m2 && months[m2[1]]){ return m2[2] + '/' + months[m2[1]]; }
+    // "Sat Dec 06 2025 ..."
+    var m3 = s.match(/[A-Za-z]{3}\s+([A-Za-z]{3})\s+(\d{1,2})/);
+    if(m3 && months[m3[1]]){ return parseInt(m3[2],10) + '/' + months[m3[1]]; }
+    // ISO "2025-12-06"  →  "6/12"
+    var m4 = s.match(/^\d{4}-(\d{1,2})-(\d{1,2})/);
+    if(m4){ return parseInt(m4[2],10) + '/' + parseInt(m4[1],10); }
+    return s;
+  }
+
   function buildStudentPage(s, idx, info, rm, year, schoolName){
     var r = s.raw || {};
     var photoHTML = s.photoURL
@@ -2861,8 +3031,10 @@ window.deleteStudent = async function(classId, studentDocId){
       : '<span class="ph-empty">รูปนักเรียน<br>(3×4 ซม.)</span>';
 
     // Student address (registered home) — includes village name if available
+    var stuHouseNo = fixDateLike(r['บ้านเลขที่นักเรียน']);
+    var guarHouseNo = fixDateLike(r['บ้านเลขที่ผู้ปกครอง']);
     var addr = [
-      r['บ้านเลขที่นักเรียน']?'บ้านเลขที่ '+r['บ้านเลขที่นักเรียน']:'',
+      stuHouseNo?'บ้านเลขที่ '+stuHouseNo:'',
       r['หมู่นักเรียน']?'หมู่ '+r['หมู่นักเรียน']:'',
       r['หมู่บ้านนักเรียน']?'บ้าน'+r['หมู่บ้านนักเรียน']:'',
       r['ตำบลนักเรียน']?'ต.'+r['ตำบลนักเรียน']:'',
@@ -2873,7 +3045,7 @@ window.deleteStudent = async function(classId, studentDocId){
 
     // Guardian address (parent's real address, replaces "workplace")
     var guardianAddr = [
-      r['บ้านเลขที่ผู้ปกครอง']?'บ้านเลขที่ '+r['บ้านเลขที่ผู้ปกครอง']:'',
+      guarHouseNo?'บ้านเลขที่ '+guarHouseNo:'',
       r['หมู่ผู้ปกครอง']?'หมู่ '+r['หมู่ผู้ปกครอง']:'',
       r['หมู่บ้านผู้ปกครอง']?'บ้าน'+r['หมู่บ้านผู้ปกครอง']:'',
       r['ตำบลผู้ปกครอง']?'ต.'+r['ตำบลผู้ปกครอง']:'',
