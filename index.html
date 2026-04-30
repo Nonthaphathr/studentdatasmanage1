@@ -329,9 +329,11 @@ table.data-tbl .gender-f{color:#be185d}
      PLAIN SCRIPT — splash exit + UI bootstrap (ไม่รอ Firebase)
      ═══════════════════════════════════════════════════════════════ -->
 <script>
+// ───── PUBLIC STUDENT FORM ROUTE — runs at top, just sets a flag and hides teacher UI ─────
+// IMPORTANT: This block must NOT prevent the rest of the script from running, because
+// the rest of this script defines critical globals (AppState, GRADE_INFO, escHTML, classLabel)
+// that the public form needs.
 (function(){
-  // ───── PUBLIC STUDENT FORM ROUTE ─────
-  // If URL hash starts with #form, render the public student input form instead of the teacher app
   if(typeof location !== 'undefined' && location.hash && location.hash.indexOf('#form') === 0){
     window.IS_PUBLIC_FORM = true;
     document.documentElement.classList.add('public-form');
@@ -339,26 +341,29 @@ table.data-tbl .gender-f{color:#be185d}
     if(splashEl){ splashEl.style.display='none'; }
     var appEl = document.getElementById('app');
     if(appEl){ appEl.style.display='none'; }
-    // The form will be rendered after Firebase loads (see PublicForm bootstrap below)
-    return;
   }
+})();
 
-  // Splash exit
-  var SPLASH_KEY='nt_splash_seen_at';
-  var seen=parseInt(localStorage.getItem(SPLASH_KEY)||'0',10);
-  var skipSplash=Date.now()-seen<60*60*1000;  // 1 ชั่วโมง
-  function killSplash(){
-    var s=document.getElementById('splash'); if(!s) return;
-    s.classList.add('hide');
-    document.getElementById('app').style.display='flex';
-    setTimeout(function(){ s.style.display='none'; },650);
-    localStorage.setItem(SPLASH_KEY, String(Date.now()));
+(function(){
+  // Skip splash logic entirely if we're in public-form mode
+  if(!window.IS_PUBLIC_FORM){
+    // Splash exit
+    var SPLASH_KEY='nt_splash_seen_at';
+    var seen=parseInt(localStorage.getItem(SPLASH_KEY)||'0',10);
+    var skipSplash=Date.now()-seen<60*60*1000;  // 1 ชั่วโมง
+    var killSplash=function(){
+      var s=document.getElementById('splash'); if(!s) return;
+      s.classList.add('hide');
+      document.getElementById('app').style.display='flex';
+      setTimeout(function(){ s.style.display='none'; },650);
+      localStorage.setItem(SPLASH_KEY, String(Date.now()));
+    };
+    if(skipSplash){ killSplash(); }
+    else { setTimeout(killSplash, 2400); }
+
+    // อนุญาตคลิกข้าม splash
+    document.getElementById('splash').addEventListener('click', killSplash);
   }
-  if(skipSplash){ killSplash(); }
-  else { setTimeout(killSplash, 2400); }
-
-  // อนุญาตคลิกข้าม splash
-  document.getElementById('splash').addEventListener('click', killSplash);
 
   // ───── TOAST ─────
   window.showToast=function(msg, type, ms){
