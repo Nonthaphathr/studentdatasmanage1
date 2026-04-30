@@ -151,6 +151,19 @@ html.public-form, html.public-form body{background:linear-gradient(135deg,#f0f9f
 .action-card .ac-text h3{font-family:'Kanit',sans-serif;font-size:1.2rem;margin-bottom:.25rem}
 .action-card .ac-text p{margin:0;color:var(--ink-muted);font-size:.9rem}
 
+/* ═══ Add-student CTA (green animated) ═══ */
+.add-student-cta{display:flex;align-items:center;gap:1rem;width:100%;margin-top:1rem;padding:1.1rem 1.4rem;background:linear-gradient(135deg,#10b981 0%,#059669 50%,#047857 100%);color:#fff;border:none;border-radius:var(--r-lg);cursor:pointer;font-family:'Kanit',sans-serif;font-size:1.05rem;text-align:left;position:relative;overflow:hidden;box-shadow:0 8px 24px rgba(16,185,129,.35),inset 0 1px 0 rgba(255,255,255,.2);transition:transform .15s ease,box-shadow .15s ease;animation:ascPulse 2.4s ease-in-out infinite}
+.add-student-cta:hover{transform:translateY(-2px);box-shadow:0 14px 32px rgba(16,185,129,.5),inset 0 1px 0 rgba(255,255,255,.25)}
+.add-student-cta:active{transform:translateY(0)}
+.add-student-cta .asc-icon{font-size:2rem;background:rgba(255,255,255,.2);width:54px;height:54px;border-radius:14px;display:flex;align-items:center;justify-content:center;flex-shrink:0;animation:ascBounce 1.8s ease-in-out infinite}
+.add-student-cta .asc-text{display:flex;flex-direction:column;flex:1;line-height:1.3}
+.add-student-cta .asc-text strong{font-size:1.15rem;font-weight:700}
+.add-student-cta .asc-text small{font-size:.86rem;font-weight:400;opacity:.92;margin-top:2px}
+.add-student-cta .asc-shine{position:absolute;top:0;left:-30%;width:30%;height:100%;background:linear-gradient(110deg,transparent 0%,rgba(255,255,255,.35) 50%,transparent 100%);transform:skewX(-20deg);animation:ascShine 3.5s ease-in-out infinite;pointer-events:none}
+@keyframes ascPulse{0%,100%{box-shadow:0 8px 24px rgba(16,185,129,.35),inset 0 1px 0 rgba(255,255,255,.2)}50%{box-shadow:0 8px 30px rgba(16,185,129,.6),inset 0 1px 0 rgba(255,255,255,.25)}}
+@keyframes ascBounce{0%,100%{transform:translateY(0) rotate(0deg)}25%{transform:translateY(-3px) rotate(-5deg)}75%{transform:translateY(-3px) rotate(5deg)}}
+@keyframes ascShine{0%{left:-30%}45%,100%{left:130%}}
+
 /* ═══════════════════════════════════════════════════════════════
    BUTTONS
    ═══════════════════════════════════════════════════════════════ */
@@ -802,6 +815,7 @@ window.deleteStudent = async function(classId, studentDocId){
     else if(act==='editAdvisors'){ openAdvisorsForClass(window.AppState.currentClassId); }
     else if(act==='openSettings'){ openSettingsModal(); }
     else if(act==='openStudent'){ openStudentDetail(p.studentId); }
+    else if(act==='addStudentManual'){ window.openManualAddStudent(p.classId); }
     else { console.warn('unknown act', act); }
   }
 
@@ -883,6 +897,11 @@ window.deleteStudent = async function(classId, studentDocId){
     html += '<div class="action-card" data-act="gotoStudents"><div class="ac-icon">👥</div><div class="ac-text"><h3>ดูข้อมูลนักเรียน</h3><p>รายชื่อ ค้นหา แก้ไข อัปโหลดรูป</p></div></div>';
     html += '<div class="action-card" data-act="gotoPrint"><div class="ac-icon">🖨️</div><div class="ac-text"><h3>โหลดเอกสารประจำชั้น</h3><p>พิมพ์ปก คำนำ สารบัญ ข้อมูลรายคน</p></div></div>';
     html += '</div>';
+    html += '<button class="add-student-cta" data-act="addStudentManual" data-p=\''+JSON.stringify({classId:current.id})+'\'>'+
+              '<span class="asc-icon">➕</span>'+
+              '<span class="asc-text"><strong>เพิ่มข้อมูลนักเรียนใหม่</strong><small>เพิ่มข้อมูลนักเรียนด้วยตนเอง</small></span>'+
+              '<span class="asc-shine"></span>'+
+            '</button>';
 
     return html;
   }
@@ -2053,6 +2072,12 @@ window.deleteStudent = async function(classId, studentDocId){
             'โปรดระวังการแชร์เกินความจำเป็น และตรวจสอบข้อมูลในระบบเป็นระยะ'+
           '</div>'+
 
+          '<div style="background:linear-gradient(135deg,#ede9fe,#fce7f3);border:1px solid #c4b5fd;border-radius:12px;padding:14px;margin-top:14px">'+
+            '<div style="font-weight:600;color:#5b21b6;margin-bottom:6px">📄 สร้างเอกสารรวม QR ทุกระดับชั้น</div>'+
+            '<div style="font-size:.88em;color:#4c1d95;margin-bottom:10px">เอกสาร A4 1 หน้าที่มี QR Code สำหรับ ม.1–ม.6 ครบทั้งหมด — เหมาะสำหรับติดประกาศหรือแจกให้นักเรียน</div>'+
+            '<button class="btn btn-primary" id="pfmBulkDoc" style="background:linear-gradient(135deg,#7c3aed,#db2777)">🖨️ เปิดเอกสารพิมพ์ QR ทั้งหมด</button>'+
+          '</div>'+
+
         '</div>'+
         '<div class="modal-foot"><button class="btn" id="pfmCancel">ปิด</button></div>'+
       '</div>';
@@ -2111,9 +2136,93 @@ window.deleteStudent = async function(classId, studentDocId){
           window.showToast('เปิด QR Code ในหน้าใหม่ คลิกขวา → Save image','info');
         }
       };
+
+      bd.querySelector('#pfmBulkDoc').onclick = function(){
+        openBulkQrDoc(year, room);
+      };
     }
 
     function close(){ bd.classList.remove('show'); setTimeout(function(){bd.remove();}, 220); }
+
+    function openBulkQrDoc(yr, rm){
+      var st = window.AppState.settings || {};
+      var schoolName = st.schoolName || 'โรงเรียนกระดุมทองวิทยา';
+      var logo = st.schoolLogo || 'https://nonthaphathr.github.io/uploadimg/logorecruit2026.png';
+      var grades = ['m1','m2','m3','m4','m5','m6'];
+      var year = yr || st.currentAcademicYear;
+
+      var cells = grades.map(function(g){
+        var info = window.GRADE_INFO[g];
+        var p = ['grade='+g, 'year='+year];
+        if(rm) p.push('room='+encodeURIComponent(rm));
+        var formUrl = baseUrl + '#form?' + p.join('&');
+        var qr = 'https://api.qrserver.com/v1/create-qr-code/?size=400x400&margin=10&data=' + encodeURIComponent(formUrl);
+        return '<div class="qr-cell" style="border-color:'+info.color+'">'+
+          '<div class="qr-grade" style="background:'+info.color+'">ชั้นมัธยมศึกษาปีที่ '+info.num+'</div>'+
+          '<img class="qr-img" src="'+qr+'" alt="QR ม.'+info.num+'" crossorigin="anonymous">'+
+          '<div class="qr-cap">สแกนเพื่อกรอกข้อมูล</div>'+
+        '</div>';
+      }).join('');
+
+      var html = '<!DOCTYPE html><html lang="th"><head><meta charset="UTF-8">'+
+        '<title>QR Code ฟอร์มกรอกข้อมูล — '+window.escHTML(schoolName)+'</title>'+
+        '<link rel="preconnect" href="https://fonts.googleapis.com">'+
+        '<link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@400;600;700&family=Kanit:wght@500;600;700&display=swap" rel="stylesheet">'+
+        '<style>'+
+          '@page{size:A4 portrait;margin:1.2cm}'+
+          '*{box-sizing:border-box}'+
+          'body{margin:0;font-family:"Sarabun",sans-serif;color:#1f2937;background:#e5e7eb}'+
+          '.page{background:#fff;width:210mm;min-height:297mm;padding:1.2cm;margin:6mm auto;box-shadow:0 4px 14px rgba(0,0,0,.1);display:flex;flex-direction:column}'+
+          '.doc-head{display:flex;align-items:center;gap:14px;padding-bottom:10px;border-bottom:3px double #4338ca;margin-bottom:14px}'+
+          '.doc-head img{width:60px;height:60px;border-radius:50%;object-fit:contain;background:#fff;padding:4px;border:1.5px solid #e5e7eb;flex-shrink:0}'+
+          '.doc-head .ht{flex:1}'+
+          '.doc-head h1{font-family:"Kanit",sans-serif;font-size:18pt;margin:0;color:#4338ca}'+
+          '.doc-head .school{font-size:13pt;color:#374151;margin-top:2px}'+
+          '.doc-head .dev{font-size:9.5pt;color:#6b7280;margin-top:4px}'+
+          '.doc-intro{background:#f0f9ff;border-left:4px solid #0369a1;padding:8px 12px;margin-bottom:14px;font-size:11pt;line-height:1.6;color:#0c4a6e;border-radius:4px}'+
+          '.doc-intro strong{color:#0369a1}'+
+          '.qr-grid{display:grid;grid-template-columns:repeat(2,1fr);grid-template-rows:repeat(3,1fr);gap:8mm;flex:1}'+
+          '.qr-cell{border:2px solid #ddd;border-radius:10px;padding:6mm;display:flex;flex-direction:column;align-items:center;justify-content:space-between;background:#fafafa;break-inside:avoid;page-break-inside:avoid}'+
+          '.qr-grade{font-family:"Kanit",sans-serif;font-size:13pt;font-weight:600;color:#fff;padding:5px 14px;border-radius:999px;margin-bottom:5mm}'+
+          '.qr-img{width:100%;max-width:55mm;height:auto;aspect-ratio:1;background:#fff}'+
+          '.qr-cap{font-size:11pt;color:#374151;margin-top:4mm;font-weight:500}'+
+          '.doc-foot{margin-top:10px;padding-top:8px;border-top:1px solid #e5e7eb;text-align:center;font-size:9.5pt;color:#6b7280;line-height:1.6}'+
+          '.toolbar{position:sticky;top:0;background:#1f2937;color:#fff;padding:10px 16px;display:flex;gap:10px;align-items:center;z-index:100}'+
+          '.toolbar h2{margin:0;font-family:"Kanit",sans-serif;font-size:14pt;flex:1}'+
+          '.toolbar button{background:#10b981;color:#fff;border:none;padding:8px 16px;border-radius:8px;cursor:pointer;font-family:"Kanit",sans-serif;font-size:12pt}'+
+          '.toolbar button.close{background:#6b7280}'+
+          '@media print{body{background:#fff}.toolbar{display:none}.page{box-shadow:none;margin:0;width:auto}}'+
+        '</style></head><body>'+
+        '<div class="toolbar">'+
+          '<h2>เอกสาร QR Code ทุกระดับชั้น</h2>'+
+          '<button onclick="window.print()">🖨️ พิมพ์เอกสาร</button>'+
+          '<button class="close" onclick="window.close()">← ปิด</button>'+
+        '</div>'+
+        '<div class="page">'+
+          '<div class="doc-head">'+
+            '<img src="'+window.escHTML(logo)+'" alt="" onerror="this.style.display=\'none\'">'+
+            '<div class="ht">'+
+              '<h1>QR Code แบบฟอร์มกรอกข้อมูลนักเรียน</h1>'+
+              '<div class="school">'+window.escHTML(schoolName)+' &nbsp;•&nbsp; ปีการศึกษา '+year+'</div>'+
+              '<div class="dev">พัฒนาโดย ครูนนทพัทธ์ หิรัญเรือง — งานทะเบียนและเทียบโอนผลการเรียน กลุ่มบริหารงานวิชาการ</div>'+
+            '</div>'+
+          '</div>'+
+          '<div class="doc-intro">'+
+            '<strong>คำอธิบาย:</strong> นักเรียนสามารถใช้โทรศัพท์มือถือสแกน QR Code ตามระดับชั้นที่ตนเองสังกัด '+
+            'เพื่อเข้าสู่แบบฟอร์มกรอกข้อมูลส่วนบุคคล ที่อยู่ ผู้ปกครอง บิดา-มารดา และข้อมูลการเดินทาง '+
+            'ข้อมูลที่กรอกจะเข้าสู่ระบบสารสนเทศประจำชั้นเรียนของครูที่ปรึกษาโดยตรง'+
+          '</div>'+
+          '<div class="qr-grid">'+cells+'</div>'+
+          '<div class="doc-foot">'+
+            '<strong>'+window.escHTML(schoolName)+'</strong> — ระบบสารสนเทศประจำชั้นเรียน'+
+          '</div>'+
+        '</div>'+
+        '</body></html>';
+
+      var w = window.open('', '_blank');
+      if(!w){ window.showToast('โปรดอนุญาต Pop-up เพื่อเปิดเอกสาร','warning'); return; }
+      w.document.open(); w.document.write(html); w.document.close();
+    }
 
     render();
   };
@@ -2912,7 +3021,8 @@ window.deleteStudent = async function(classId, studentDocId){
     var schoolAddr = st.schoolAddress || '';
     var logo = st.schoolLogo || 'https://nonthaphathr.github.io/uploadimg/logorecruit2026.png';
     var year = rm.academicYear;
-    var tocStartPage = 4; // หน้า 4 = นักเรียนคนแรก
+    var clsLbl = window.classLabel(info.num, rm.room);
+    var tocStartPage = 4;
     // เรียงนักเรียนตามเลขประจำตัว
     var sorted = students.slice().sort(function(a,b){
       var ia = String(a.studentId||'').trim();
@@ -2986,6 +3096,52 @@ window.deleteStudent = async function(classId, studentDocId){
       return buildStudentPage(s, idx, info, rm, year, schoolName);
     }).join('');
 
+    // QR last page — links to public form + teacher app for this class
+    var baseUrl = location.origin + location.pathname;
+    var formParams = ['grade='+rm.grade, 'year='+year];
+    if(rm.room) formParams.push('room='+encodeURIComponent(rm.room));
+    var formUrl = baseUrl + '#form?' + formParams.join('&');
+    var appUrl = baseUrl;   // teacher app entry — no hash; user navigates manually to this class
+    var qrFormSrc = 'https://api.qrserver.com/v1/create-qr-code/?size=400x400&margin=10&data=' + encodeURIComponent(formUrl);
+    var qrAppSrc  = 'https://api.qrserver.com/v1/create-qr-code/?size=400x400&margin=10&data=' + encodeURIComponent(appUrl);
+
+    var qrPageHTML = '<section class="page qr-last-page" style="display:flex;flex-direction:column">'+
+      '<h1 style="font-family:Kanit;color:'+info.color+';text-align:center;font-size:18pt;margin:0 0 4mm;border-bottom:3px double '+info.color+';padding-bottom:6mm">'+
+        'QR Code สำหรับนักเรียนและครูที่ปรึกษา'+
+      '</h1>'+
+      '<p style="text-align:center;color:#374151;font-size:12pt;margin:0 0 8mm">'+
+        clsLbl+' &nbsp;•&nbsp; ปีการศึกษา '+year+' &nbsp;•&nbsp; '+escH(schoolName)+
+      '</p>'+
+
+      '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10mm;flex:1">'+
+
+        '<div style="border:2.5px solid '+info.color+';border-radius:14px;padding:8mm 6mm;display:flex;flex-direction:column;align-items:center;background:#fafafa">'+
+          '<div style="background:'+info.color+';color:#fff;font-family:Kanit;font-size:13pt;font-weight:600;padding:5px 16px;border-radius:999px;margin-bottom:6mm">📝 กรอกข้อมูลด้วยตนเอง</div>'+
+          '<img src="'+qrFormSrc+'" alt="QR Form" style="width:100%;max-width:65mm;height:auto;aspect-ratio:1;background:#fff" crossorigin="anonymous">'+
+          '<div style="font-family:Kanit;color:'+info.color+';font-size:12pt;font-weight:600;margin-top:5mm">สำหรับนักเรียน</div>'+
+          '<div style="font-size:10pt;color:#374151;margin-top:2mm;text-align:center;line-height:1.5">สแกนเพื่อกรอกข้อมูลส่วนบุคคล<br>ที่อยู่ ผู้ปกครอง บิดา-มารดา<br>เข้าสู่ระบบโดยตรง</div>'+
+        '</div>'+
+
+        '<div style="border:2.5px solid '+info.color+';border-radius:14px;padding:8mm 6mm;display:flex;flex-direction:column;align-items:center;background:#fafafa">'+
+          '<div style="background:'+info.color+';color:#fff;font-family:Kanit;font-size:13pt;font-weight:600;padding:5px 16px;border-radius:999px;margin-bottom:6mm">⚙️ แก้ไข / ดาวน์โหลด</div>'+
+          '<img src="'+qrAppSrc+'" alt="QR App" style="width:100%;max-width:65mm;height:auto;aspect-ratio:1;background:#fff" crossorigin="anonymous">'+
+          '<div style="font-family:Kanit;color:'+info.color+';font-size:12pt;font-weight:600;margin-top:5mm">สำหรับครูที่ปรึกษา</div>'+
+          '<div style="font-size:10pt;color:#374151;margin-top:2mm;text-align:center;line-height:1.5">สแกนเพื่อเปิดระบบบริหาร<br>แก้ไขข้อมูลและดาวน์โหลด<br>เอกสารประจำชั้น</div>'+
+        '</div>'+
+
+      '</div>'+
+
+      '<div style="margin-top:8mm;padding:5mm 6mm;background:#f9fafb;border-left:4px solid '+info.color+';border-radius:6px;font-size:10pt;color:#374151;line-height:1.6">'+
+        '<strong style="color:'+info.color+'">ข้อมูลลิงก์ (สำหรับพิมพ์/แชร์):</strong><br>'+
+        '<span style="word-break:break-all;font-family:monospace;font-size:9.5pt">📝 ฟอร์ม: '+escH(formUrl)+'</span><br>'+
+        '<span style="word-break:break-all;font-family:monospace;font-size:9.5pt">⚙️ ระบบครู: '+escH(appUrl)+'</span>'+
+      '</div>'+
+
+      '<div class="sp-foot" style="position:static;margin-top:auto;border-top:1px solid #e5e7eb;padding-top:3mm;text-align:center;font-size:9pt;color:#6b7280">'+
+        escH(schoolName)+' &nbsp;•&nbsp; '+clsLbl+' ปี '+year+' &nbsp;•&nbsp; หน้า '+(sorted.length+4)+
+      '</div>'+
+    '</section>';
+
     return '<!DOCTYPE html><html lang="th"><head><meta charset="UTF-8"><title>เอกสารสารสนเทศประจำชั้น '+window.classLabel(info.num, rm.room)+' ปี '+year+'</title>'+
       '<link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@300;400;500;600;700&family=Kanit:wght@400;500;600;700;800&display=swap" rel="stylesheet">'+
       '<style>'+printCSS(info.color)+'</style></head><body>'+
@@ -2994,7 +3150,7 @@ window.deleteStudent = async function(classId, studentDocId){
         '<button onclick="window.close()" class="btn-ghost">← ปิด</button>'+
         '<label class="opt"><input type="checkbox" id="optHidePhoto"> ซ่อนกรอบรูป</label>'+
       '</div>'+
-      coverHTML + prefaceHTML + tocHTML + studentPages +
+      coverHTML + prefaceHTML + tocHTML + studentPages + qrPageHTML +
       '<script>'+
       'document.getElementById("optHidePhoto").addEventListener("change",function(e){'+
         'document.body.classList.toggle("hide-photo",e.target.checked);});'+
@@ -3027,6 +3183,20 @@ window.deleteStudent = async function(classId, studentDocId){
     var m4 = s.match(/^\d{4}-(\d{1,2})-(\d{1,2})/);
     if(m4){ return parseInt(m4[2],10) + '/' + parseInt(m4[1],10); }
     return s;
+  }
+
+  // Extract last name (last whitespace-separated token) from a fullname string
+  // e.g. "นาย สมชาย ใจดี" → "ใจดี", "เด็กหญิงกัลกร พร้อมพรม" → "พร้อมพรม"
+  // Returns empty string if no clear last name (e.g. only a single token).
+  function extractLastName(fullname){
+    if(!fullname) return '';
+    var s = String(fullname).trim();
+    if(!s) return '';
+    // Strip common Thai prefixes (without space)
+    s = s.replace(/^(เด็กชาย|เด็กหญิง|ด\.ช\.|ด\.ญ\.|นางสาว|นาย|นาง)\s*/, '');
+    var parts = s.split(/\s+/).filter(Boolean);
+    if(parts.length < 2) return '';
+    return parts[parts.length - 1];
   }
 
   function buildStudentPage(s, idx, info, rm, year, schoolName){
@@ -3103,16 +3273,19 @@ window.deleteStudent = async function(classId, studentDocId){
         sectionTitle('ผู้ปกครอง', info.color)+
         '<table class="kv-tbl">'+
           kvRow('ชื่อผู้ปกครอง', r['ชื่อผู้ปกครอง'], 'ความสัมพันธ์', r['ความสัมพันธ์ผู้ปกครอง'])+
-          kvRow('อาชีพ', r['อาชีพผู้ปกครอง'], 'ที่อยู่ผู้ปกครอง', guardianAddr || '-')+
+          kvRow('อาชีพ', r['อาชีพผู้ปกครอง'], 'นามสกุล', r['นามสกุลผู้ปกครอง'] || extractLastName(r['ชื่อผู้ปกครอง']))+
+          kvRow('ที่อยู่ผู้ปกครอง', guardianAddr || '-')+
           kvRow('โทรบ้าน', r['โทรบ้านผู้ปกครอง'], 'โทรมือถือ', r['โทรมือถือผู้ปกครอง'])+
         '</table>'+
 
         sectionTitle('บิดา / มารดา', info.color)+
         '<table class="kv-tbl">'+
           kvRow('ชื่อบิดา', r['ชื่อ-สกุลบิดา'], 'อาชีพ', r['อาชีพบิดา'])+
-          kvRow('โทรบิดา', r['โทรบิดา'], 'รายได้/ปี', r['รายได้บิดา'])+
+          kvRow('นามสกุลบิดา', r['นามสกุลบิดา'] || extractLastName(r['ชื่อ-สกุลบิดา']), 'โทรบิดา', r['โทรบิดา'])+
+          kvRow('รายได้บิดา/ปี', r['รายได้บิดา'], 'สถานะ', r['สถานะบิดา'])+
           kvRow('ชื่อมารดา', r['ชื่อ-สกุลมารดา'], 'อาชีพ', r['อาชีพมารดา'])+
-          kvRow('โทรมารดา', r['โทรมารดา'], 'รายได้/ปี', r['รายได้มารดา'])+
+          kvRow('นามสกุลมารดา', r['นามสกุลมารดา'] || extractLastName(r['ชื่อ-สกุลมารดา']), 'โทรมารดา', r['โทรมารดา'])+
+          kvRow('รายได้มารดา/ปี', r['รายได้มารดา'], 'สถานะ', r['สถานะมารดา'])+
           kvRow('สถานภาพบิดา-มารดา', r['สถานภาพบิดา-มารดา'])+
         '</table>'+
 
@@ -3206,6 +3379,264 @@ window.deleteStudent = async function(classId, studentDocId){
     '.sp-section{font-family:"Kanit",sans-serif;font-size:12pt;font-weight:600;background:#f3f4f6;border-left:4px solid #999;padding:1.2mm 4mm;margin:3mm 0 1.5mm}'+
     '.sp-foot{margin-top:auto;text-align:center;font-size:9pt;color:#6b7280;border-top:1px solid #e5e7eb;padding:2mm 16mm 4mm;flex-shrink:0}';
   }
+
+  // ═══════════════ Manual Add Student (in-app form, same schema as CSV import) ═══════════════
+  window.openManualAddStudent = function(classId){
+    if(!classId){ window.showToast('ยังไม่ได้เลือกห้อง','warning'); return; }
+    var rm = (window.AppState.classrooms||[]).find(function(c){return c.id===classId});
+    if(!rm){ window.showToast('ไม่พบห้อง','error'); return; }
+    var info = window.GRADE_INFO[rm.grade];
+    var clsLbl = window.classLabel(info.num, rm.room);
+
+    var bd = document.createElement('div'); bd.className='modal-bd show';
+    document.body.appendChild(bd);
+
+    function fld(label, id, opts){
+      opts = opts || {};
+      var req = opts.required ? '<span style="color:#dc2626">*</span>' : '';
+      var inp;
+      if(opts.type==='select'){
+        inp = '<select id="'+id+'">'+(opts.options||[]).map(function(o){return '<option value="'+window.escHTML(o.value||o)+'">'+window.escHTML(o.label||o)+'</option>';}).join('')+'</select>';
+      } else if(opts.type==='textarea'){
+        inp = '<textarea id="'+id+'" rows="2"></textarea>';
+      } else {
+        inp = '<input type="'+(opts.type||'text')+'" id="'+id+'"'+(opts.inputmode?' inputmode="'+opts.inputmode+'"':'')+(opts.maxlength?' maxlength="'+opts.maxlength+'"':'')+(opts.value?' value="'+window.escHTML(opts.value)+'"':'')+'>';
+      }
+      return '<div class="form-row" style="margin:0"><label>'+label+' '+req+'</label>'+inp+'</div>';
+    }
+    function row2(){ var args = Array.prototype.slice.call(arguments); return '<div style="display:grid;grid-template-columns:1fr 1fr;gap:.6rem">'+args.join('')+'</div>'; }
+    function row3(){ var args = Array.prototype.slice.call(arguments); return '<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:.6rem">'+args.join('')+'</div>'; }
+    function sect(title){ return '<h4 style="font-family:Kanit;color:'+info.color+';margin:1.1rem 0 .5rem;border-bottom:2px solid '+info.color+'33;padding-bottom:.3rem">'+title+'</h4>'; }
+
+    bd.innerHTML = '<div class="modal modal-lg" style="max-width:760px"><div class="modal-head">'+
+      '<h3>➕ เพิ่มข้อมูลนักเรียนใหม่ — '+clsLbl+' ปี '+rm.academicYear+'</h3>'+
+      '<button class="modal-close" id="masClose">×</button></div>'+
+      '<div class="modal-body" style="max-height:70vh;overflow:auto">'+
+
+        sect('👤 ข้อมูลส่วนตัว')+
+        fld('คำนำหน้า','masPrefix',{required:true,type:'select',options:[{value:'',label:'-- เลือก --'},'เด็กชาย','เด็กหญิง','นาย','นางสาว']})+
+        row2(
+          fld('ชื่อจริง','masFirstName',{required:true}),
+          fld('นามสกุล','masLastName',{required:true})
+        )+
+        row2(
+          fld('ชื่อเล่น','masNickname'),
+          fld('เลขประจำตัวนักเรียน','masStudentId',{inputmode:'numeric'})
+        )+
+        fld('เลขบัตรประชาชน','masNationalId',{required:true,inputmode:'numeric',maxlength:13})+
+        row3(
+          fld('วันเกิด (วัน)','masBirthDay',{type:'number',inputmode:'numeric'}),
+          fld('เดือน','masBirthMonth',{type:'select',options:[{value:'',label:'--'}].concat(['มกราคม','กุมภาพันธ์','มีนาคม','เมษายน','พฤษภาคม','มิถุนายน','กรกฎาคม','สิงหาคม','กันยายน','ตุลาคม','พฤศจิกายน','ธันวาคม'])}),
+          fld('ปี (พ.ศ.)','masBirthYear',{type:'number',inputmode:'numeric'})
+        )+
+        row3(
+          fld('อายุ (ปี)','masAge',{type:'number',inputmode:'numeric'}),
+          fld('น้ำหนัก (กก.)','masWeight',{type:'number'}),
+          fld('ส่วนสูง (ซม.)','masHeight',{type:'number'})
+        )+
+        row3(
+          fld('สัญชาติ','masNationality',{value:'ไทย'}),
+          fld('เชื้อชาติ','masRace',{value:'ไทย'}),
+          fld('ศาสนา','masReligion',{value:'พุทธ'})
+        )+
+        fld('โรคประจำตัว','masDisease')+
+        fld('โรงเรียนเดิม','masOldSchool')+
+
+        sect('🏠 ที่อยู่ตามทะเบียนบ้าน')+
+        row2(
+          fld('บ้านเลขที่','masHouseNo'),
+          fld('หมู่','masMoo',{inputmode:'numeric'})
+        )+
+        fld('ชื่อหมู่บ้าน','masVillage')+
+        row2(
+          fld('ตำบล','masSubdistrict'),
+          fld('อำเภอ','masDistrict')
+        )+
+        row2(
+          fld('จังหวัด','masProvince'),
+          fld('รหัสไปรษณีย์','masPostal',{inputmode:'numeric',maxlength:5})
+        )+
+        fld('เบอร์โทรนักเรียน','masStudentPhone',{type:'tel',inputmode:'numeric'})+
+
+        sect('👨 บิดา')+
+        row3(
+          fld('คำนำหน้า','masFatherPrefix',{type:'select',options:[{value:'',label:'--'},'นาย','ดร.','ผศ.','รศ.','ศ.']}),
+          fld('ชื่อจริง','masFatherFirstName'),
+          fld('นามสกุล','masFatherLastName')
+        )+
+        row2(
+          fld('อาชีพ','masFatherJob'),
+          fld('เบอร์โทร','masFatherPhone',{type:'tel',inputmode:'numeric'})
+        )+
+        row2(
+          fld('สถานะ','masFatherStatus',{type:'select',options:[{value:'',label:'--'},'มีชีวิต','เสียชีวิต']}),
+          fld('รายได้/ปี (บาท)','masFatherIncome',{type:'number'})
+        )+
+
+        sect('👩 มารดา')+
+        row3(
+          fld('คำนำหน้า','masMotherPrefix',{type:'select',options:[{value:'',label:'--'},'นาง','นางสาว','ดร.','ผศ.','รศ.','ศ.']}),
+          fld('ชื่อจริง','masMotherFirstName'),
+          fld('นามสกุล','masMotherLastName')
+        )+
+        row2(
+          fld('อาชีพ','masMotherJob'),
+          fld('เบอร์โทร','masMotherPhone',{type:'tel',inputmode:'numeric'})
+        )+
+        row2(
+          fld('สถานะ','masMotherStatus',{type:'select',options:[{value:'',label:'--'},'มีชีวิต','เสียชีวิต']}),
+          fld('รายได้/ปี (บาท)','masMotherIncome',{type:'number'})
+        )+
+        fld('สถานภาพบิดา-มารดา','masParentStatus',{type:'select',options:[{value:'',label:'-- เลือก --'},'อยู่ด้วยกัน','แยกกันอยู่','หย่าร้าง','บิดาเสียชีวิต','มารดาเสียชีวิต','เสียชีวิตทั้งคู่']})+
+
+        sect('👨‍👩‍👧 ผู้ปกครอง')+
+        row3(
+          fld('คำนำหน้า','masGuardianPrefix',{required:true,type:'select',options:[{value:'',label:'--'},'นาย','นาง','นางสาว','ดร.','ผศ.','รศ.','ศ.']}),
+          fld('ชื่อจริง','masGuardianFirstName',{required:true}),
+          fld('นามสกุล','masGuardianLastName',{required:true})
+        )+
+        row2(
+          fld('ความสัมพันธ์','masGuardianRel',{required:true,type:'select',options:[{value:'',label:'-- เลือก --'},'บิดา','มารดา','ปู่','ย่า','ตา','ยาย','ลุง','ป้า','น้า','อา','พี่','อื่นๆ']}),
+          fld('เบอร์มือถือ','masGuardianPhone',{required:true,type:'tel',inputmode:'numeric'})
+        )+
+        row2(
+          fld('อาชีพ','masGuardianJob'),
+          fld('เบอร์บ้าน','masGuardianHomePhone',{type:'tel',inputmode:'numeric'})
+        )+
+        fld('รายได้/ปี (บาท)','masGuardianIncome',{type:'number'})+
+
+        sect('🚌 การเดินทาง')+
+        row2(
+          fld('วิธีเดินทาง','masTravel',{type:'select',options:[{value:'',label:'-- เลือก --'},'เดิน','จักรยาน','มอเตอร์ไซค์','รถยนต์','รถโรงเรียน','รถประจำทาง','อื่นๆ']}),
+          fld('ระยะทาง (กม.)','masDistance',{type:'number'})
+        )+
+
+      '</div>'+
+      '<div class="modal-foot">'+
+        '<button class="btn" id="masCancel">ยกเลิก</button>'+
+        '<button class="btn btn-success" id="masSave">💾 บันทึก</button>'+
+      '</div></div>';
+
+    function close(){ bd.classList.remove('show'); setTimeout(function(){bd.remove();},220); }
+    bd.querySelector('#masClose').onclick = close;
+    bd.querySelector('#masCancel').onclick = close;
+    bd.querySelector('#masSave').onclick = handleSave;
+
+    async function handleSave(){
+      var V = function(id){ var el=bd.querySelector('#'+id); return el && el.value ? String(el.value).trim() : ''; };
+
+      var prefix = V('masPrefix');
+      var firstName = V('masFirstName');
+      var lastName = V('masLastName');
+      var nationalId = V('masNationalId').replace(/[^0-9]/g,'');
+      var guardianPrefix = V('masGuardianPrefix');
+      var guardianFirst = V('masGuardianFirstName');
+      var guardianLast = V('masGuardianLastName');
+      var guardianRel = V('masGuardianRel');
+      var guardianPhone = V('masGuardianPhone');
+
+      if(!prefix || !firstName || !lastName){ window.showToast('กรุณากรอก คำนำหน้า ชื่อ และนามสกุลของนักเรียน','warning'); return; }
+      if(!nationalId || nationalId.length<13){ window.showToast('กรุณากรอกเลขบัตรประชาชน 13 หลักให้ครบ','warning'); return; }
+      if(!guardianPrefix || !guardianFirst || !guardianLast || !guardianRel || !guardianPhone){
+        window.showToast('กรุณากรอกข้อมูลผู้ปกครองให้ครบ','warning'); return;
+      }
+
+      try {
+        window.showLoading(true,'กำลังบันทึก...');
+        var fullName = prefix + firstName + ' ' + lastName;
+        var gender = (prefix==='เด็กชาย'||prefix==='นาย')?'ชาย':((prefix==='เด็กหญิง'||prefix==='นางสาว'||prefix==='นาง')?'หญิง':'ไม่ระบุ');
+
+        var fatherFirst = V('masFatherFirstName'), fatherLast = V('masFatherLastName'), fatherPrefix = V('masFatherPrefix');
+        var fatherFull = (fatherFirst||fatherLast) ? ((fatherPrefix||'')+fatherFirst+(fatherLast?' '+fatherLast:'')) : '';
+        var motherFirst = V('masMotherFirstName'), motherLast = V('masMotherLastName'), motherPrefix = V('masMotherPrefix');
+        var motherFull = (motherFirst||motherLast) ? ((motherPrefix||'')+motherFirst+(motherLast?' '+motherLast:'')) : '';
+        var guardianFull = guardianPrefix + guardianFirst + ' ' + guardianLast;
+
+        var raw = {
+          'วันที่บันทึก': new Date().toLocaleString('th-TH'),
+          'ปีการศึกษา': String(rm.academicYear),
+          'ชั้น/ห้อง': rm.room ? ('ม.'+info.num+'/'+rm.room) : ('ม.'+info.num),
+          'เลขประจำตัวนักเรียน': V('masStudentId'),
+          'ชื่อ-สกุลนักเรียน': fullName,
+          'ชื่อเล่น': V('masNickname'),
+          'เลขบัตรนักเรียน': nationalId,
+          'วันเกิด(วัน)': V('masBirthDay'), 'วันเกิด(เดือน)': V('masBirthMonth'), 'วันเกิด(ปีพ.ศ.)': V('masBirthYear'),
+          'อายุ': V('masAge'), 'น้ำหนัก(กก.)': V('masWeight'), 'ส่วนสูง(ซม.)': V('masHeight'),
+          'สัญชาตินักเรียน': V('masNationality'), 'เชื้อชาตินักเรียน': V('masRace'), 'ศาสนานักเรียน': V('masReligion'),
+          'โรคประจำตัว': V('masDisease'), 'โรงเรียนเดิม': V('masOldSchool'),
+          'บ้านเลขที่นักเรียน': V('masHouseNo'), 'หมู่นักเรียน': V('masMoo'), 'หมู่บ้านนักเรียน': V('masVillage'),
+          'ตำบลนักเรียน': V('masSubdistrict'), 'อำเภอนักเรียน': V('masDistrict'),
+          'จังหวัดนักเรียน': V('masProvince'), 'รหัสไปรษณีย์นักเรียน': V('masPostal'),
+          'โทรนักเรียน': V('masStudentPhone'),
+          'ชื่อ-สกุลบิดา': fatherFull, 'คำนำหน้าบิดา': fatherPrefix, 'ชื่อบิดา': fatherFirst, 'นามสกุลบิดา': fatherLast,
+          'อาชีพบิดา': V('masFatherJob'), 'โทรบิดา': V('masFatherPhone'),
+          'สถานะบิดา': V('masFatherStatus'), 'รายได้บิดา': V('masFatherIncome'),
+          'ชื่อ-สกุลมารดา': motherFull, 'คำนำหน้ามารดา': motherPrefix, 'ชื่อมารดา': motherFirst, 'นามสกุลมารดา': motherLast,
+          'อาชีพมารดา': V('masMotherJob'), 'โทรมารดา': V('masMotherPhone'),
+          'สถานะมารดา': V('masMotherStatus'), 'รายได้มารดา': V('masMotherIncome'),
+          'สถานภาพบิดา-มารดา': V('masParentStatus'),
+          'ชื่อผู้ปกครอง': guardianFull, 'คำนำหน้าผู้ปกครอง': guardianPrefix,
+          'ชื่อจริงผู้ปกครอง': guardianFirst, 'นามสกุลผู้ปกครอง': guardianLast,
+          'ความสัมพันธ์ผู้ปกครอง': guardianRel,
+          'อาชีพผู้ปกครอง': V('masGuardianJob'),
+          'โทรบ้านผู้ปกครอง': V('masGuardianHomePhone'),
+          'โทรมือถือผู้ปกครอง': guardianPhone,
+          'รายได้ผู้ปกครอง': V('masGuardianIncome'),
+          'การเดินทาง': V('masTravel'), 'ระยะทาง(กม.)': V('masDistance'),
+          '_addedManually': true,
+          '_addedAt': new Date().toISOString()
+        };
+
+        var newStudent = {
+          studentId: raw['เลขประจำตัวนักเรียน'] || nationalId,
+          fullName: fullName,
+          nickname: raw['ชื่อเล่น'],
+          gender: gender,
+          phone: raw['โทรนักเรียน'] || guardianPhone,
+          raw: raw
+        };
+
+        var existing = await window.getStudentsOfClass(classId, true);
+        var dup = existing.find(function(s){
+          return (s.raw && s.raw['เลขบัตรนักเรียน']===nationalId) ||
+                 (newStudent.studentId && s.studentId===newStudent.studentId);
+        });
+        if(dup){
+          window.showLoading(false);
+          window.showToast('พบข้อมูลซ้ำ — เลขบัตรประชาชนหรือเลขประจำตัวนี้มีอยู่แล้ว','error',5000);
+          return;
+        }
+        var combined = existing.slice();
+        combined.push(newStudent);
+        combined.sort(function(a,b){
+          var ia=String(a.studentId||'').trim(), ib=String(b.studentId||'').trim();
+          if(!ia&&!ib) return (a.fullName||'').localeCompare(b.fullName||'','th');
+          if(!ia) return 1; if(!ib) return -1;
+          return ia.localeCompare(ib,'th',{numeric:true});
+        });
+        combined.forEach(function(s,i){ s.order = i+1; });
+
+        await window.upsertClassroom({
+          academicYear: rm.academicYear, grade: rm.grade, room: rm.room,
+          studentCount: combined.length,
+          maleCount: combined.filter(function(s){return s.gender==='ชาย';}).length,
+          femaleCount: combined.filter(function(s){return s.gender==='หญิง';}).length,
+          sourceFormat: rm.sourceFormat || 'A'
+        });
+        await window.bulkSaveStudents(classId, combined);
+
+        window.AppState.studentsCache = {};
+        window.showLoading(false);
+        window.showToast('เพิ่มนักเรียน '+window.escHTML(fullName)+' เรียบร้อย','success');
+        close();
+        if(window.refreshCurrentView) window.refreshCurrentView();
+      } catch(e){
+        console.error(e);
+        window.showLoading(false);
+        window.showToast('บันทึกผิดพลาด: '+e.message,'error');
+      }
+    }
+  };
 })();
 </script>
 
@@ -3310,37 +3741,80 @@ window.deleteStudent = async function(classId, studentDocId){
           '</div>'+
 
           '<div class="pf-card">'+
-            '<h2>👨‍👩‍👧 ผู้ปกครอง / บิดา-มารดา</h2>'+
-            '<div class="pf-grid">'+
-              '<div class="pf-row"><label>ชื่อบิดา</label><input type="text" id="pfFatherName"></div>'+
-              '<div class="pf-row"><label>อาชีพบิดา</label><input type="text" id="pfFatherJob"></div>'+
+            '<h2>👨 บิดา</h2>'+
+            '<div class="pf-grid-3">'+
+              '<div class="pf-row"><label>คำนำหน้า</label>'+
+                '<select id="pfFatherPrefix"><option value="">--</option>'+
+                  '<option>นาย</option><option>ดร.</option><option>ผศ.</option><option>รศ.</option><option>ศ.</option>'+
+                '</select></div>'+
+              '<div class="pf-row"><label>ชื่อจริง</label><input type="text" id="pfFatherFirstName"></div>'+
+              '<div class="pf-row"><label>นามสกุล</label><input type="text" id="pfFatherLastName"></div>'+
             '</div>'+
             '<div class="pf-grid">'+
-              '<div class="pf-row"><label>เบอร์บิดา</label><input type="tel" id="pfFatherPhone" inputmode="numeric"></div>'+
-              '<div class="pf-row"><label>สถานะบิดา</label>'+
+              '<div class="pf-row"><label>อาชีพ</label><input type="text" id="pfFatherJob"></div>'+
+              '<div class="pf-row"><label>เบอร์โทร</label><input type="tel" id="pfFatherPhone" inputmode="numeric"></div>'+
+            '</div>'+
+            '<div class="pf-grid">'+
+              '<div class="pf-row"><label>สถานะ</label>'+
                 '<select id="pfFatherStatus"><option value="">--</option>'+
                   '<option>มีชีวิต</option><option>เสียชีวิต</option>'+
                 '</select></div>'+
+              '<div class="pf-row"><label>รายได้ต่อปี (บาท)</label><input type="number" id="pfFatherIncome"></div>'+
+            '</div>'+
+          '</div>'+
+
+          '<div class="pf-card">'+
+            '<h2>👩 มารดา</h2>'+
+            '<div class="pf-grid-3">'+
+              '<div class="pf-row"><label>คำนำหน้า</label>'+
+                '<select id="pfMotherPrefix"><option value="">--</option>'+
+                  '<option>นาง</option><option>นางสาว</option><option>ดร.</option><option>ผศ.</option><option>รศ.</option><option>ศ.</option>'+
+                '</select></div>'+
+              '<div class="pf-row"><label>ชื่อจริง</label><input type="text" id="pfMotherFirstName"></div>'+
+              '<div class="pf-row"><label>นามสกุล</label><input type="text" id="pfMotherLastName"></div>'+
             '</div>'+
             '<div class="pf-grid">'+
-              '<div class="pf-row"><label>ชื่อมารดา</label><input type="text" id="pfMotherName"></div>'+
-              '<div class="pf-row"><label>อาชีพมารดา</label><input type="text" id="pfMotherJob"></div>'+
+              '<div class="pf-row"><label>อาชีพ</label><input type="text" id="pfMotherJob"></div>'+
+              '<div class="pf-row"><label>เบอร์โทร</label><input type="tel" id="pfMotherPhone" inputmode="numeric"></div>'+
             '</div>'+
             '<div class="pf-grid">'+
-              '<div class="pf-row"><label>เบอร์มารดา</label><input type="tel" id="pfMotherPhone" inputmode="numeric"></div>'+
-              '<div class="pf-row"><label>สถานะมารดา</label>'+
+              '<div class="pf-row"><label>สถานะ</label>'+
                 '<select id="pfMotherStatus"><option value="">--</option>'+
                   '<option>มีชีวิต</option><option>เสียชีวิต</option>'+
                 '</select></div>'+
+              '<div class="pf-row"><label>รายได้ต่อปี (บาท)</label><input type="number" id="pfMotherIncome"></div>'+
+            '</div>'+
+            '<div class="pf-row"><label>สถานภาพบิดา-มารดา</label>'+
+              '<select id="pfParentStatus"><option value="">-- เลือก --</option>'+
+                '<option>อยู่ด้วยกัน</option><option>แยกกันอยู่</option><option>หย่าร้าง</option>'+
+                '<option>บิดาเสียชีวิต</option><option>มารดาเสียชีวิต</option><option>เสียชีวิตทั้งคู่</option>'+
+              '</select></div>'+
+          '</div>'+
+
+          '<div class="pf-card">'+
+            '<h2>👨‍👩‍👧 ผู้ปกครอง <span style="font-size:.7em;color:#6b7280;font-weight:400">(ผู้ที่ดูแลนักเรียน)</span></h2>'+
+            '<div class="pf-grid-3">'+
+              '<div class="pf-row"><label>คำนำหน้า <span class="req">*</span></label>'+
+                '<select id="pfGuardianPrefix" required><option value="">--</option>'+
+                  '<option>นาย</option><option>นาง</option><option>นางสาว</option><option>ดร.</option><option>ผศ.</option><option>รศ.</option><option>ศ.</option>'+
+                '</select></div>'+
+              '<div class="pf-row"><label>ชื่อจริง <span class="req">*</span></label><input type="text" id="pfGuardianFirstName" required></div>'+
+              '<div class="pf-row"><label>นามสกุล <span class="req">*</span></label><input type="text" id="pfGuardianLastName" required></div>'+
             '</div>'+
             '<div class="pf-grid">'+
-              '<div class="pf-row"><label>ชื่อผู้ปกครอง <span class="req">*</span></label><input type="text" id="pfGuardianName" required></div>'+
-              '<div class="pf-row"><label>ความสัมพันธ์</label><input type="text" id="pfGuardianRel" placeholder="เช่น บิดา / มารดา / ปู่"></div>'+
+              '<div class="pf-row"><label>ความสัมพันธ์กับนักเรียน <span class="req">*</span></label>'+
+                '<select id="pfGuardianRel" required><option value="">-- เลือก --</option>'+
+                  '<option>บิดา</option><option>มารดา</option><option>ปู่</option><option>ย่า</option>'+
+                  '<option>ตา</option><option>ยาย</option><option>ลุง</option><option>ป้า</option>'+
+                  '<option>น้า</option><option>อา</option><option>พี่</option><option>อื่นๆ</option>'+
+                '</select></div>'+
+              '<div class="pf-row"><label>เบอร์โทรมือถือ <span class="req">*</span></label><input type="tel" id="pfGuardianPhone" inputmode="numeric" required></div>'+
             '</div>'+
             '<div class="pf-grid">'+
-              '<div class="pf-row"><label>อาชีพผู้ปกครอง</label><input type="text" id="pfGuardianJob"></div>'+
-              '<div class="pf-row"><label>เบอร์โทรผู้ปกครอง <span class="req">*</span></label><input type="tel" id="pfGuardianPhone" inputmode="numeric" required></div>'+
+              '<div class="pf-row"><label>อาชีพ</label><input type="text" id="pfGuardianJob"></div>'+
+              '<div class="pf-row"><label>เบอร์โทรบ้าน</label><input type="tel" id="pfGuardianHomePhone" inputmode="numeric"></div>'+
             '</div>'+
+            '<div class="pf-row"><label>รายได้ต่อปี (บาท)</label><input type="number" id="pfGuardianIncome"></div>'+
           '</div>'+
 
           '<div class="pf-card">'+
@@ -3370,25 +3844,29 @@ window.deleteStudent = async function(classId, studentDocId){
     async function handleSubmit(){
       var btn = document.getElementById('pfSubmit');
       var $ = function(id){ return document.getElementById(id); };
+      var V = function(id){ return ($(id) && $(id).value) ? $(id).value.trim() : ''; };
 
       // Validate required
-      var prefix = $('pfPrefix').value;
-      var firstName = $('pfFirstName').value.trim();
-      var lastName = $('pfLastName').value.trim();
-      var nationalId = $('pfNationalId').value.replace(/[^0-9]/g,'').trim();
-      var guardianName = $('pfGuardianName').value.trim();
-      var guardianPhone = $('pfGuardianPhone').value.trim();
+      var prefix = V('pfPrefix');
+      var firstName = V('pfFirstName');
+      var lastName = V('pfLastName');
+      var nationalId = V('pfNationalId').replace(/[^0-9]/g,'');
+      var guardianPrefix = V('pfGuardianPrefix');
+      var guardianFirst = V('pfGuardianFirstName');
+      var guardianLast = V('pfGuardianLastName');
+      var guardianRel = V('pfGuardianRel');
+      var guardianPhone = V('pfGuardianPhone');
 
       if(!prefix || !firstName || !lastName){
-        window.showToast('กรุณากรอกคำนำหน้า ชื่อ และนามสกุลให้ครบ','warning');
+        window.showToast('กรุณากรอกคำนำหน้า ชื่อ และนามสกุลของนักเรียนให้ครบ','warning');
         return;
       }
       if(!nationalId || nationalId.length<13){
         window.showToast('กรุณากรอกเลขบัตรประชาชน 13 หลักให้ครบถ้วน','warning');
         return;
       }
-      if(!guardianName || !guardianPhone){
-        window.showToast('กรุณากรอกชื่อผู้ปกครองและเบอร์ติดต่อ','warning');
+      if(!guardianPrefix || !guardianFirst || !guardianLast || !guardianRel || !guardianPhone){
+        window.showToast('กรุณากรอกข้อมูลผู้ปกครองให้ครบ (คำนำหน้า ชื่อ นามสกุล ความสัมพันธ์ และเบอร์โทร)','warning');
         return;
       }
 
@@ -3396,50 +3874,84 @@ window.deleteStudent = async function(classId, studentDocId){
 
       try {
         var fullName = prefix + firstName + ' ' + lastName;
-        var gender = (prefix==='เด็กชาย'||prefix==='นาย')?'ชาย':((prefix==='เด็กหญิง'||prefix==='นางสาว')?'หญิง':'ไม่ระบุ');
+        var gender = (prefix==='เด็กชาย'||prefix==='นาย')?'ชาย':((prefix==='เด็กหญิง'||prefix==='นางสาว'||prefix==='นาง')?'หญิง':'ไม่ระบุ');
+
+        // Build composed names — preserve original "ชื่อ-สกุล*" CSV schema
+        var fatherFirst = V('pfFatherFirstName');
+        var fatherLast = V('pfFatherLastName');
+        var fatherPrefix = V('pfFatherPrefix');
+        var fatherFull = (fatherFirst || fatherLast)
+          ? ((fatherPrefix?fatherPrefix:'') + fatherFirst + (fatherLast?' '+fatherLast:''))
+          : '';
+
+        var motherFirst = V('pfMotherFirstName');
+        var motherLast = V('pfMotherLastName');
+        var motherPrefix = V('pfMotherPrefix');
+        var motherFull = (motherFirst || motherLast)
+          ? ((motherPrefix?motherPrefix:'') + motherFirst + (motherLast?' '+motherLast:''))
+          : '';
+
+        var guardianFull = guardianPrefix + guardianFirst + ' ' + guardianLast;
 
         // Build raw object matching Format A schema
         var raw = {
           'วันที่บันทึก': new Date().toLocaleString('th-TH'),
           'ปีการศึกษา': String(year),
           'ชั้น/ห้อง': room ? ('ม.'+info.num+'/'+room) : ('ม.'+info.num),
-          'เลขประจำตัวนักเรียน': $('pfStudentId').value.trim(),
+          'เลขประจำตัวนักเรียน': V('pfStudentId'),
           'ชื่อ-สกุลนักเรียน': fullName,
-          'ชื่อเล่น': $('pfNickname').value.trim(),
+          'ชื่อเล่น': V('pfNickname'),
           'เลขบัตรนักเรียน': nationalId,
-          'วันเกิด(วัน)': $('pfBirthDay').value.trim(),
-          'วันเกิด(เดือน)': $('pfBirthMonth').value,
-          'วันเกิด(ปีพ.ศ.)': $('pfBirthYear').value.trim(),
-          'อายุ': $('pfAge').value.trim(),
-          'น้ำหนัก(กก.)': $('pfWeight').value.trim(),
-          'ส่วนสูง(ซม.)': $('pfHeight').value.trim(),
-          'สัญชาตินักเรียน': $('pfNationality').value.trim(),
-          'เชื้อชาตินักเรียน': $('pfRace').value.trim(),
-          'ศาสนานักเรียน': $('pfReligion').value.trim(),
-          'โรคประจำตัว': $('pfDisease').value.trim(),
-          'โรงเรียนเดิม': $('pfOldSchool').value.trim(),
-          'บ้านเลขที่นักเรียน': $('pfHouseNo').value.trim(),
-          'หมู่นักเรียน': $('pfMoo').value.trim(),
-          'หมู่บ้านนักเรียน': $('pfVillage').value.trim(),
-          'ตำบลนักเรียน': $('pfSubdistrict').value.trim(),
-          'อำเภอนักเรียน': $('pfDistrict').value.trim(),
-          'จังหวัดนักเรียน': $('pfProvince').value.trim(),
-          'รหัสไปรษณีย์นักเรียน': $('pfPostal').value.trim(),
-          'โทรนักเรียน': $('pfStudentPhone').value.trim(),
-          'ชื่อ-สกุลบิดา': $('pfFatherName').value.trim(),
-          'อาชีพบิดา': $('pfFatherJob').value.trim(),
-          'โทรบิดา': $('pfFatherPhone').value.trim(),
-          'สถานะบิดา': $('pfFatherStatus').value,
-          'ชื่อ-สกุลมารดา': $('pfMotherName').value.trim(),
-          'อาชีพมารดา': $('pfMotherJob').value.trim(),
-          'โทรมารดา': $('pfMotherPhone').value.trim(),
-          'สถานะมารดา': $('pfMotherStatus').value,
-          'ชื่อผู้ปกครอง': guardianName,
-          'ความสัมพันธ์ผู้ปกครอง': $('pfGuardianRel').value.trim(),
-          'อาชีพผู้ปกครอง': $('pfGuardianJob').value.trim(),
+          'วันเกิด(วัน)': V('pfBirthDay'),
+          'วันเกิด(เดือน)': V('pfBirthMonth'),
+          'วันเกิด(ปีพ.ศ.)': V('pfBirthYear'),
+          'อายุ': V('pfAge'),
+          'น้ำหนัก(กก.)': V('pfWeight'),
+          'ส่วนสูง(ซม.)': V('pfHeight'),
+          'สัญชาตินักเรียน': V('pfNationality'),
+          'เชื้อชาตินักเรียน': V('pfRace'),
+          'ศาสนานักเรียน': V('pfReligion'),
+          'โรคประจำตัว': V('pfDisease'),
+          'โรงเรียนเดิม': V('pfOldSchool'),
+          'บ้านเลขที่นักเรียน': V('pfHouseNo'),
+          'หมู่นักเรียน': V('pfMoo'),
+          'หมู่บ้านนักเรียน': V('pfVillage'),
+          'ตำบลนักเรียน': V('pfSubdistrict'),
+          'อำเภอนักเรียน': V('pfDistrict'),
+          'จังหวัดนักเรียน': V('pfProvince'),
+          'รหัสไปรษณีย์นักเรียน': V('pfPostal'),
+          'โทรนักเรียน': V('pfStudentPhone'),
+          // Father
+          'ชื่อ-สกุลบิดา': fatherFull,
+          'คำนำหน้าบิดา': fatherPrefix,
+          'ชื่อบิดา': fatherFirst,
+          'นามสกุลบิดา': fatherLast,
+          'อาชีพบิดา': V('pfFatherJob'),
+          'โทรบิดา': V('pfFatherPhone'),
+          'สถานะบิดา': V('pfFatherStatus'),
+          'รายได้บิดา': V('pfFatherIncome'),
+          // Mother
+          'ชื่อ-สกุลมารดา': motherFull,
+          'คำนำหน้ามารดา': motherPrefix,
+          'ชื่อมารดา': motherFirst,
+          'นามสกุลมารดา': motherLast,
+          'อาชีพมารดา': V('pfMotherJob'),
+          'โทรมารดา': V('pfMotherPhone'),
+          'สถานะมารดา': V('pfMotherStatus'),
+          'รายได้มารดา': V('pfMotherIncome'),
+          'สถานภาพบิดา-มารดา': V('pfParentStatus'),
+          // Guardian
+          'ชื่อผู้ปกครอง': guardianFull,
+          'คำนำหน้าผู้ปกครอง': guardianPrefix,
+          'ชื่อจริงผู้ปกครอง': guardianFirst,
+          'นามสกุลผู้ปกครอง': guardianLast,
+          'ความสัมพันธ์ผู้ปกครอง': guardianRel,
+          'อาชีพผู้ปกครอง': V('pfGuardianJob'),
+          'โทรบ้านผู้ปกครอง': V('pfGuardianHomePhone'),
           'โทรมือถือผู้ปกครอง': guardianPhone,
-          'การเดินทาง': $('pfTravel').value,
-          'ระยะทาง(กม.)': $('pfDistance').value.trim(),
+          'รายได้ผู้ปกครอง': V('pfGuardianIncome'),
+          'การเดินทาง': V('pfTravel'),
+          'ระยะทาง(กม.)': V('pfDistance'),
           '_submittedViaForm': true,
           '_submittedAt': new Date().toISOString()
         };
