@@ -1084,6 +1084,36 @@ window.deleteStudent = async function(classId, studentDocId){
     return 'ไม่ระบุ';
   }
 
+  // ═══════════════ Clean Excel cell value ═══════════════
+  // Handles these common Excel corruption patterns:
+  //   ="0942783809"  → 0942783809   (formula-prefix for forced text)
+  //   9.42783809E+8  → 0942783809   (scientific notation numeric)
+  //   942783809.0    → 942783809    (float with .0)
+  function cleanExcelValue(v){
+    if(v == null) return '';
+    var s = String(v).trim();
+    // Strip Excel ="..." formula-text prefix
+    var fmMatch = s.match(/^="(.*)"$/);
+    if(fmMatch) return fmMatch[1].trim();
+    // Detect scientific notation (e.g. 9.42783809E+8 or 9.42E8)
+    var sciMatch = s.match(/^-?(\d+\.?\d*)[eE][+\-]?(\d+)$/);
+    if(sciMatch){
+      try{
+        var num = parseFloat(s);
+        // Convert to integer string if it's a whole number (phone/ID fields)
+        if(Number.isFinite(num) && Math.abs(num) < 1e15){
+          var intStr = num.toFixed(0);
+          return intStr;
+        }
+      }catch(e){}
+    }
+    // Strip trailing ".0" from numbers stored as float (e.g. "942783809.0")
+    var dotZero = s.match(/^(-?\d+)\.0+$/);
+    if(dotZero) return dotZero[1];
+    return s;
+  }
+  window.cleanExcelValue = cleanExcelValue;
+
   // ═══════════════ Read file (xlsx/csv) → rows ═══════════════
   // CSVs are parsed manually as text to preserve leading zeros (phone, student IDs).
   // SheetJS is used only for true binary .xlsx/.xls files.
@@ -1107,18 +1137,34 @@ window.deleteStudent = async function(classId, studentDocId){
         fr.onload = function(e){
           try{
             var data = new Uint8Array(e.target.result);
-            // For xlsx: cells are typed by Excel; if cell is text-formatted with leading zero
-            // it preserves; if cell is numeric it loses leading zero (Excel limitation).
-            // raw:false + cellText:true returns the displayed string of each cell.
+            // cellText:true → SheetJS fills cell.w (formatted display text)
+            // raw:false     → sheet_to_json uses .w over .v
             var wb = XLSX.read(data, {type:'array', cellDates:false, raw:false, cellText:true});
             var sheetName = wb.SheetNames[0];
             var ws = wb.Sheets[sheetName];
-            var rows = XLSX.utils.sheet_to_json(ws, {defval:'', raw:false});
-            rows = rows.map(function(r){
-              var out = {};
-              for(var k in r) out[k] = (r[k]==null?'':String(r[k]));
-              return out;
-            });
+
+            // Build rows manually using cell.w (Excel display text) to avoid
+            // scientific notation (9.42E8) and preserve leading zeros.
+            var range = XLSX.utils.decode_range(ws['!ref'] || 'A1');
+            var headers = [];
+            for(var c = range.s.c; c <= range.e.c; c++){
+              var hAddr = XLSX.utils.encode_cell({r: range.s.r, c: c});
+              var hCell = ws[hAddr];
+              headers.push(hCell ? cleanExcelValue(hCell.w || hCell.v || '') : '');
+            }
+            var rows = [];
+            for(var r2 = range.s.r + 1; r2 <= range.e.r; r2++){
+              var obj = {};
+              var hasData = false;
+              for(var c2 = range.s.c; c2 <= range.e.c; c2++){
+                var addr = XLSX.utils.encode_cell({r: r2, c: c2});
+                var cell = ws[addr];
+                var val = cell ? cleanExcelValue(cell.w || cell.v || '') : '';
+                obj[headers[c2 - range.s.c]] = val;
+                if(val) hasData = true;
+              }
+              if(hasData) rows.push(obj);
+            }
             resolve(rows);
           }catch(err){ reject(err); }
         };
@@ -3246,7 +3292,10 @@ window.deleteStudent = async function(classId, studentDocId){
     var coverHTML = '<section class="page cover">'+
       '<div class="cover-frame">'+
         '<div class="cover-inner">'+
-          '<img class="cover-logo" src="'+escH(logo)+'" onerror="this.style.display=\'none\'">'+
+          '<div class="cover-logos">'+
+          '<img class="cover-logo" src="https://nonthaphathr.github.io/uploadimg/logoclassroominformation.png" onerror="this.style.display=\'none\'">'+
+          '<img class="cover-logo" src="https://nonthaphathr.github.io/uploadimg/logoschool.png" onerror="this.style.display=\'none\'">'+
+        '</div>'+
           '<div class="cover-school">'+escH(schoolName)+'</div>'+
           '<div class="cover-divider"></div>'+
           '<div class="cover-title">เอกสารสารสนเทศประจำชั้น</div>'+
@@ -3397,6 +3446,19 @@ window.deleteStudent = async function(classId, studentDocId){
     return parts[parts.length - 1];
   }
 
+  // Strip last name token from Thai full name string, keeping prefix+firstname
+  // e.g. "นาย สมชาย ใจดี" → "นาย สมชาย"
+  //      "นางสาวกาญจนา รักดี" → "นางสาวกาญจนา"  (no space after prefix)
+  function stripLastName(fullname){
+    if(!fullname) return '';
+    var s = String(fullname).trim();
+    if(!s) return '';
+    // Split on whitespace; drop the last token (last name)
+    var parts = s.split(/\s+/).filter(Boolean);
+    if(parts.length <= 1) return s;  // only one token → return as-is
+    return parts.slice(0, parts.length - 1).join(' ');
+  }
+
   function buildStudentPage(s, idx, info, rm, year, schoolName){
     var r = s.raw || {};
     var photoHTML = s.photoURL
@@ -3409,7 +3471,7 @@ window.deleteStudent = async function(classId, studentDocId){
     var addr = [
       stuHouseNo?'บ้านเลขที่ '+stuHouseNo:'',
       r['หมู่นักเรียน']?'หมู่ '+r['หมู่นักเรียน']:'',
-      r['หมู่บ้านนักเรียน']?'บ้าน'+r['หมู่บ้านนักเรียน']:'',
+      r['หมู่บ้านนักเรียน']?r['หมู่บ้านนักเรียน'].replace(/^บ้าน/,''):'',
       r['ตำบลนักเรียน']?'ต.'+r['ตำบลนักเรียน']:'',
       r['อำเภอนักเรียน']?'อ.'+r['อำเภอนักเรียน']:'',
       r['จังหวัดนักเรียน']?'จ.'+r['จังหวัดนักเรียน']:'',
@@ -3420,7 +3482,7 @@ window.deleteStudent = async function(classId, studentDocId){
     var guardianAddr = [
       guarHouseNo?'บ้านเลขที่ '+guarHouseNo:'',
       r['หมู่ผู้ปกครอง']?'หมู่ '+r['หมู่ผู้ปกครอง']:'',
-      r['หมู่บ้านผู้ปกครอง']?'บ้าน'+r['หมู่บ้านผู้ปกครอง']:'',
+      r['หมู่บ้านผู้ปกครอง']?r['หมู่บ้านผู้ปกครอง'].replace(/^บ้าน/,''):'',
       r['ตำบลผู้ปกครอง']?'ต.'+r['ตำบลผู้ปกครอง']:'',
       r['อำเภอผู้ปกครอง']?'อ.'+r['อำเภอผู้ปกครอง']:'',
       r['จังหวัดผู้ปกครอง']?'จ.'+r['จังหวัดผู้ปกครอง']:'',
@@ -3470,7 +3532,7 @@ window.deleteStudent = async function(classId, studentDocId){
 
         sectionTitle('ผู้ปกครอง', info.color)+
         '<table class="kv-tbl">'+
-          kvRow('ชื่อผู้ปกครอง', r['ชื่อผู้ปกครอง'], 'ความสัมพันธ์', r['ความสัมพันธ์ผู้ปกครอง'])+
+          kvRow('ชื่อผู้ปกครอง', (r['คำนำหน้าผู้ปกครอง']&&r['ชื่อจริงผู้ปกครอง']) ? (r['คำนำหน้าผู้ปกครอง']+' '+r['ชื่อจริงผู้ปกครอง']) : stripLastName(r['ชื่อผู้ปกครอง']), 'ความสัมพันธ์', r['ความสัมพันธ์ผู้ปกครอง'])+
           kvRow('อาชีพ', r['อาชีพผู้ปกครอง'], 'นามสกุล', r['นามสกุลผู้ปกครอง'] || extractLastName(r['ชื่อผู้ปกครอง']))+
           kvRow('ที่อยู่ผู้ปกครอง', guardianAddr || '-')+
           kvRow('โทรบ้าน', r['โทรบ้านผู้ปกครอง'], 'โทรมือถือ', r['โทรมือถือผู้ปกครอง'])+
@@ -3478,10 +3540,10 @@ window.deleteStudent = async function(classId, studentDocId){
 
         sectionTitle('บิดา / มารดา', info.color)+
         '<table class="kv-tbl">'+
-          kvRow('ชื่อบิดา', r['ชื่อ-สกุลบิดา'], 'อาชีพ', r['อาชีพบิดา'])+
+          kvRow('ชื่อบิดา', (r['คำนำหน้าบิดา']&&r['ชื่อบิดา']) ? (r['คำนำหน้าบิดา']+' '+r['ชื่อบิดา']) : stripLastName(r['ชื่อ-สกุลบิดา']), 'อาชีพ', r['อาชีพบิดา'])+
           kvRow('นามสกุลบิดา', r['นามสกุลบิดา'] || extractLastName(r['ชื่อ-สกุลบิดา']), 'โทรบิดา', r['โทรบิดา'])+
           kvRow('รายได้บิดา/ปี', r['รายได้บิดา'], 'สถานะ', r['สถานะบิดา'])+
-          kvRow('ชื่อมารดา', r['ชื่อ-สกุลมารดา'], 'อาชีพ', r['อาชีพมารดา'])+
+          kvRow('ชื่อมารดา', (r['คำนำหน้ามารดา']&&r['ชื่อมารดา']) ? (r['คำนำหน้ามารดา']+' '+r['ชื่อมารดา']) : stripLastName(r['ชื่อ-สกุลมารดา']), 'อาชีพ', r['อาชีพมารดา'])+
           kvRow('นามสกุลมารดา', r['นามสกุลมารดา'] || extractLastName(r['ชื่อ-สกุลมารดา']), 'โทรมารดา', r['โทรมารดา'])+
           kvRow('รายได้มารดา/ปี', r['รายได้มารดา'], 'สถานะ', r['สถานะมารดา'])+
           kvRow('สถานภาพบิดา-มารดา', r['สถานภาพบิดา-มารดา'])+
@@ -3532,12 +3594,13 @@ window.deleteStudent = async function(classId, studentDocId){
     '.toolbar .opt{margin-left:auto;font-size:11pt}'+
     /* Cover */
     '.cover{padding:0;display:flex;align-items:stretch;justify-content:stretch}'+
-    '.cover-frame{flex:1;margin:14mm;border:3px double '+accent+';position:relative}'+
-    '.cover-frame::before,.cover-frame::after{content:"";position:absolute;width:30px;height:30px;border:2px solid '+accent+'}'+
-    '.cover-frame::before{top:6mm;left:6mm;border-right:none;border-bottom:none}'+
-    '.cover-frame::after{bottom:6mm;right:6mm;border-left:none;border-top:none}'+
-    '.cover-inner{padding:10mm 12mm;text-align:center;height:100%;display:flex;flex-direction:column}'+
-    '.cover-logo{width:65mm;height:65mm;object-fit:contain;margin:0 auto 5mm}'+
+    '.cover-frame{flex:1;margin:5mm;border:3px double '+accent+';position:relative}'+
+    '.cover-frame::before,.cover-frame::after{content:"";position:absolute;width:28px;height:28px;border:2px solid '+accent+'}'+
+    '.cover-frame::before{top:5mm;left:5mm;border-right:none;border-bottom:none}'+
+    '.cover-frame::after{bottom:5mm;right:5mm;border-left:none;border-top:none}'+
+    '.cover-inner{padding:7mm 10mm;text-align:center;height:100%;display:flex;flex-direction:column}'+
+    '.cover-logos{display:flex;justify-content:center;align-items:center;gap:8mm;margin-bottom:5mm}'+
+    '.cover-logo{width:50mm;height:50mm;object-fit:contain}'+
     '.cover-school{font-family:"Kanit",sans-serif;font-size:18pt;font-weight:600;color:'+accent+'}'+
     '.cover-divider{width:50mm;height:2px;background:'+accent+';margin:3mm auto}'+
     '.cover-title{font-family:"Kanit",sans-serif;font-size:24pt;font-weight:700;margin:4mm 0}'+
