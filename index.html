@@ -812,6 +812,7 @@ window.deleteStudent = async function(classId, studentDocId){
     else if(act==='gotoStudents'){ setView('studentList'); }
     else if(act==='gotoPrint'){ openPrintWindow(window.AppState.currentClassId); }
     else if(act==='importFile'){ openImportDialog(window.AppState.currentClassId); }
+    else if(act==='bulkImport'){ window.openBulkImportDialog(); }
     else if(act==='exportFile'){ exportCurrentClassroom(); }
     else if(act==='deleteRoom'){ confirmDeleteRoom(window.AppState.currentClassId); }
     else if(act==='editAdvisors'){ openAdvisorsForClass(window.AppState.currentClassId); }
@@ -866,6 +867,7 @@ window.deleteStudent = async function(classId, studentDocId){
     html += '<div class="toolbar">';
     html += '<button class="btn-back" data-act="backMain">← กลับหน้าหลัก</button>';
     html += '<h2 class="section-title" style="margin:0;color:'+info.color+'"><span class="ico">'+info.icon+'</span> ชั้นมัธยมศึกษาปีที่ '+info.num+'</h2>';
+    html += '<button class="btn btn-primary" data-act="bulkImport" style="margin-left:auto;white-space:nowrap">📥 Import ทั้งหมดครั้งเดียว</button>';
     html += '</div>';
 
     html += '<div class="room-tabs" style="--accent:'+info.color+'">';
@@ -1481,6 +1483,225 @@ window.deleteStudent = async function(classId, studentDocId){
   window.openAddRoomModal = function(grade){
     // ก็คือเปิด import dialog นั่นแหละ
     window.openImportDialog(null);
+  };
+
+  // ═══════════════ Bulk Import — ข้อมูลสารสนเทศ_ใบมอบตัว_*.csv (ทุกห้องครั้งเดียว) ═══════════════
+  window.openBulkImportDialog = function(){
+    var bd = document.createElement('div'); bd.className='modal-bd show';
+    bd.innerHTML =
+      '<div class="modal modal-lg">'+
+        '<div class="modal-head">'+
+          '<h3>📥 Import ทั้งหมดครั้งเดียว</h3>'+
+          '<button class="modal-close" id="biClose">×</button>'+
+        '</div>'+
+        '<div class="modal-body">'+
+          '<div class="form-row hint" style="background:#eff6ff;border-left:4px solid #3b82f6;padding:.65rem .85rem;border-radius:var(--r-sm);margin-bottom:.85rem">'+
+            '📄 รองรับไฟล์ <strong>ข้อมูลสารสนเทศ_ใบมอบตัว_*.csv</strong> ที่ Export จากระบบสมัครเรียน<br>'+
+            '<span style="color:var(--ink-muted)">ระบบจะอ่านคอลัมน์ <code>ชั้น/ห้อง</code> แล้วแยกห้องเรียนให้อัตโนมัติ — ไม่ต้องเลือกทีละห้อง</span>'+
+          '</div>'+
+          '<div class="form-row"><label>เลือกไฟล์ (CSV)</label>'+
+          '<input type="file" id="biFile" accept=".csv,.xlsx,.xls"></div>'+
+          '<div id="biPreview"></div>'+
+        '</div>'+
+        '<div class="modal-foot">'+
+          '<button class="btn" id="biCancel">ยกเลิก</button>'+
+          '<button class="btn btn-primary" id="biSubmit" disabled>✅ ดำเนินการนำเข้า</button>'+
+        '</div>'+
+      '</div>';
+    document.body.appendChild(bd);
+
+    var rowsCache = null;
+    function close(){ bd.classList.remove('show'); setTimeout(function(){bd.remove();}, 220); }
+    bd.querySelector('#biClose').onclick = close;
+    bd.querySelector('#biCancel').onclick = close;
+
+    // ─── อ่านไฟล์ ───
+    bd.querySelector('#biFile').addEventListener('change', async function(ev){
+      var f = ev.target.files[0]; if(!f) return;
+      bd.querySelector('#biSubmit').disabled = true;
+      bd.querySelector('#biPreview').innerHTML = '';
+      try{
+        window.showLoading(true, 'กำลังอ่านไฟล์...');
+        var rows = await window.readFileToRows(f);
+        window.showLoading(false);
+        if(!rows.length){ window.showToast('ไฟล์ว่างเปล่า','warning'); return; }
+
+        // ตรวจว่ามีคอลัมน์ ชั้น/ห้อง และ ชื่อ-สกุลนักเรียน
+        var firstRow = rows[0];
+        if(!('ชั้น/ห้อง' in firstRow) || !('ชื่อ-สกุลนักเรียน' in firstRow)){
+          var cols = Object.keys(firstRow).slice(0,12).join(', ');
+          bd.querySelector('#biPreview').innerHTML =
+            '<div class="dlg-warn dlg-danger">⚠️ ไม่พบคอลัมน์ที่ต้องการ (<code>ชั้น/ห้อง</code>, <code>ชื่อ-สกุลนักเรียน</code>)<br>'+
+            'คอลัมน์ที่พบ: '+window.escHTML(cols)+(Object.keys(firstRow).length>12?'...':'')+'</div>';
+          return;
+        }
+        rowsCache = rows;
+        renderBulkPreview();
+      } catch(e){
+        window.showLoading(false);
+        window.showToast('อ่านไฟล์ผิดพลาด: '+e.message, 'error');
+      }
+    });
+
+    // ─── Preview ───
+    function renderBulkPreview(){
+      var st = window.AppState.settings || {};
+      var yearGuess = parseInt(rowsCache[0]['ปีการศึกษา'] || st.currentAcademicYear, 10);
+
+      // แยกกลุ่มตาม ชั้น/ห้อง
+      var groups = {}, invalidCount = 0;
+      rowsCache.forEach(function(r){
+        var cr = parseClassRoom(r['ชั้น/ห้อง']);
+        if(!cr){ invalidCount++; return; }
+        var key = cr.grade+'/'+cr.room;
+        if(!groups[key]) groups[key] = {grade:cr.grade, room:cr.room, students:[]};
+        groups[key].students.push(r);
+      });
+
+      var groupKeys = Object.keys(groups);
+      var html = '<div style="background:var(--bg);border-radius:var(--r);padding:.85rem;margin-top:.6rem">';
+      html += '<div style="display:flex;gap:1.2rem;flex-wrap:wrap;margin-bottom:.6rem">';
+      html += '<span><strong>จำนวนแถวทั้งหมด:</strong> '+rowsCache.length+' คน</span>';
+      html += '<span><strong>ห้องที่พบ:</strong> '+groupKeys.length+' ห้อง</span>';
+      if(invalidCount) html += '<span style="color:var(--danger)">⚠️ ระบุชั้น/ห้องไม่ได้: '+invalidCount+' คน (จะข้าม)</span>';
+      html += '</div>';
+
+      // ตารางแสดง preview แต่ละห้อง
+      if(groupKeys.length){
+        html += '<table class="data-tbl" style="margin-bottom:.8rem">';
+        html += '<thead><tr><th>ชั้น/ห้อง</th><th>นักเรียน</th><th>ชาย</th><th>หญิง</th><th>สถานะในระบบ</th></tr></thead><tbody>';
+        var existingIds = (window.AppState.classrooms||[]).map(function(c){return c.id;});
+        groupKeys.sort().forEach(function(k){
+          var g = groups[k];
+          var cid = window.classroomId(yearGuess, g.grade, g.room);
+          var info = window.GRADE_INFO[g.grade];
+          var maleCount = g.students.filter(function(r){
+            var n = (r['ชื่อ-สกุลนักเรียน']||'').trim();
+            return n.indexOf('เด็กชาย')===0 || n.indexOf('นาย')===0 || n.indexOf('ด.ช.')===0;
+          }).length;
+          var femaleCount = g.students.length - maleCount;
+          var exists = existingIds.indexOf(cid) >= 0;
+          html += '<tr>';
+          html += '<td><span style="background:'+info.color+'1a;color:'+info.color+';padding:2px 8px;border-radius:99px;font-weight:600">'+
+                    window.classLabel(info.num, g.room)+'</span></td>';
+          html += '<td style="text-align:center">'+g.students.length+'</td>';
+          html += '<td style="text-align:center">'+maleCount+'</td>';
+          html += '<td style="text-align:center">'+femaleCount+'</td>';
+          html += '<td>'+(exists
+            ? '<span style="color:var(--warning);font-weight:600">⚠️ มีอยู่แล้ว</span>'
+            : '<span style="color:var(--success)">✅ ใหม่</span>')+'</td>';
+          html += '</tr>';
+        });
+        html += '</tbody></table>';
+      }
+
+      // ตัวอย่าง 3 แถวแรก
+      html += '<details style="margin-bottom:.6rem"><summary style="cursor:pointer;font-weight:600;margin-bottom:.4rem">ดูตัวอย่างข้อมูล 3 แถวแรก</summary>';
+      html += '<div style="overflow-x:auto"><table class="data-tbl" style="font-size:.82rem">';
+      var previewFields = ['ชั้น/ห้อง','เลขประจำตัวนักเรียน','ชื่อ-สกุลนักเรียน','ชื่อเล่น','หมู่เลือด'];
+      html += '<thead><tr>'+previewFields.map(function(f){return '<th>'+window.escHTML(f)+'</th>';}).join('')+'</tr></thead><tbody>';
+      rowsCache.slice(0,3).forEach(function(r){
+        html += '<tr>'+previewFields.map(function(f){return '<td>'+window.escHTML(r[f]||'')+'</td>';}).join('')+'</tr>';
+      });
+      html += '</tbody></table></div></details>';
+
+      // ปีการศึกษา
+      html += '<div class="form-row" style="margin:0"><label>ปีการศึกษาที่จะนำเข้า (พ.ศ.) '+
+               '<span style="color:var(--ink-muted);font-weight:400;font-size:.85em">'+(rowsCache[0]['ปีการศึกษา']?'(อ่านจากไฟล์: '+rowsCache[0]['ปีการศึกษา']+')':'(ใช้ค่าจาก Settings)')+'</span></label>'+
+               '<input type="number" id="biYear" value="'+yearGuess+'"></div>';
+
+      html += '</div>';
+      bd.querySelector('#biPreview').innerHTML = html;
+      bd.querySelector('#biSubmit').disabled = (groupKeys.length === 0);
+    }
+
+    // ─── Submit ───
+    bd.querySelector('#biSubmit').onclick = async function(){
+      if(!rowsCache) return;
+      var year = parseInt(bd.querySelector('#biYear').value, 10);
+      if(!year || year<2400 || year>2700){ window.showToast('ปีการศึกษาไม่ถูกต้อง','warning'); return; }
+
+      try{
+        window.showLoading(true, 'กำลังประมวลผล...');
+
+        // จัดกลุ่ม
+        var groups = {}, skipped = 0;
+        rowsCache.forEach(function(r){
+          var cr = parseClassRoom(r['ชั้น/ห้อง']);
+          if(!cr){ skipped++; return; }
+          var key = cr.grade+'/'+cr.room;
+          if(!groups[key]) groups[key] = {grade:cr.grade, room:cr.room, students:[]};
+          groups[key].students.push(mapRowFormatA(r));
+        });
+
+        var groupKeys = Object.keys(groups);
+        if(!groupKeys.length){
+          window.showLoading(false);
+          window.showToast('ไม่พบแถวที่ระบุชั้น/ห้องได้ ('+skipped+' แถวถูกข้าม)','error');
+          return;
+        }
+
+        // ตรวจ conflict
+        var existingClassIds = (window.AppState.classrooms||[]).map(function(c){return c.id;});
+        var conflicts = groupKeys
+          .map(function(k){ return window.classroomId(year, groups[k].grade, groups[k].room); })
+          .filter(function(cid){ return existingClassIds.indexOf(cid)>=0; });
+
+        var mode = 'overwrite';
+        if(conflicts.length){
+          window.showLoading(false);
+          mode = await chooseConflictMode(conflicts);
+          if(!mode) return;
+          window.showLoading(true, 'กำลังบันทึก...');
+        }
+
+        // นำเข้าทีละห้อง
+        var totalImported = 0;
+        for(var i=0; i<groupKeys.length; i++){
+          var k = groupKeys[i];
+          var g = groups[k];
+          var students = sortAndOrder(g.students);
+          var male   = students.filter(function(s){return s.gender==='ชาย';}).length;
+          var female = students.filter(function(s){return s.gender==='หญิง';}).length;
+          var cid = await window.upsertClassroom({
+            academicYear: year, grade: g.grade, room: g.room,
+            studentCount: students.length,
+            maleCount: male, femaleCount: female,
+            sourceFormat: 'A'
+          });
+          if(mode==='merge'){
+            var existing = await window.getStudentsOfClass(cid, true);
+            var existingIdMap = {};
+            existing.forEach(function(s){ existingIdMap[s.studentId] = true; });
+            var combined = existing.slice();
+            students.forEach(function(s){ if(!existingIdMap[s.studentId]) combined.push(s); });
+            combined = sortAndOrder(combined);
+            await window.bulkSaveStudents(cid, combined);
+            await window.upsertClassroom({
+              academicYear: year, grade: g.grade, room: g.room,
+              studentCount: combined.length,
+              maleCount: combined.filter(function(s){return s.gender==='ชาย';}).length,
+              femaleCount: combined.filter(function(s){return s.gender==='หญิง';}).length,
+              sourceFormat: 'A'
+            });
+            totalImported += combined.length - existing.length;
+          } else {
+            await window.bulkSaveStudents(cid, students);
+            totalImported += students.length;
+          }
+        }
+
+        window.showLoading(false);
+        var msg = 'นำเข้าสำเร็จ '+totalImported+' คน ('+groupKeys.length+' ห้อง)';
+        if(skipped) msg += ' — ข้าม '+skipped+' แถว (ไม่มีชั้น/ห้อง)';
+        window.showToast(msg, 'success', 5000);
+        close();
+      } catch(e){
+        window.showLoading(false);
+        console.error(e);
+        window.showToast('นำเข้าผิดพลาด: '+e.message, 'error');
+      }
+    };
   };
 
   // ═══════════════ Export current classroom to xlsx ═══════════════
