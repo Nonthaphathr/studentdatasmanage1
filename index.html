@@ -4,6 +4,8 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=5">
 <title>ระบบสารสนเทศชั้นเรียน — โรงเรียนกระดุมทองวิทยา</title>
+<link rel="icon" type="image/png" href="https://nonthaphathr.github.io/uploadimg/logoclassroominformation.png">
+<link rel="apple-touch-icon" href="https://nonthaphathr.github.io/uploadimg/logoclassroominformation.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@300;400;500;600;700;800&family=Kanit:wght@400;500;600;700;800&display=swap" rel="stylesheet">
@@ -3321,11 +3323,11 @@ window.deleteStudent = async function(classId, studentDocId){
 
   function printCSS(accent){
     return ''+
-    '@page{size:A4 portrait;margin:1cm}'+
+    '@page{size:A4 portrait;margin:1.5cm}'+
     '*{box-sizing:border-box;font-variant-numeric:normal}'+
-    'body{font-family:"Sarabun",sans-serif;font-size:11pt;line-height:1.35;color:#1f2937;margin:0;background:#e5e7eb}'+
+    'body{font-family:"Sarabun",sans-serif;font-size:12pt;line-height:1.45;color:#1f2937;margin:0;background:#e5e7eb}'+
     'h1,h2,h3{font-family:"Kanit",sans-serif;margin:0}'+
-    '.page{background:#fff;width:210mm;min-height:297mm;padding:12mm 14mm;margin:6mm auto;page-break-after:always;position:relative;box-shadow:0 4px 14px rgba(0,0,0,.1)}'+
+    '.page{background:#fff;width:210mm;min-height:297mm;padding:18mm 16mm;margin:6mm auto;page-break-after:always;position:relative;box-shadow:0 4px 14px rgba(0,0,0,.1)}'+
     '@media print{body{background:#fff}.page{box-shadow:none;margin:0;width:auto;min-height:auto;padding:0}.no-print{display:none!important}}'+
     /* Toolbar */
     '.toolbar{position:sticky;top:0;background:#1f2937;color:#fff;padding:.6rem 1rem;display:flex;gap:.5rem;align-items:center;flex-wrap:wrap;z-index:10}'+
@@ -3338,20 +3340,20 @@ window.deleteStudent = async function(classId, studentDocId){
     '.cover-frame::before,.cover-frame::after{content:"";position:absolute;width:30px;height:30px;border:2px solid '+accent+'}'+
     '.cover-frame::before{top:6mm;left:6mm;border-right:none;border-bottom:none}'+
     '.cover-frame::after{bottom:6mm;right:6mm;border-left:none;border-top:none}'+
-    '.cover-inner{padding:10mm 12mm;text-align:center;height:100%;display:flex;flex-direction:column}'+
-    '.cover-logo{width:65mm;height:65mm;object-fit:contain;margin:0 auto 5mm}'+
-    '.cover-school{font-family:"Kanit",sans-serif;font-size:18pt;font-weight:600;color:'+accent+'}'+
-    '.cover-divider{width:50mm;height:2px;background:'+accent+';margin:3mm auto}'+
-    '.cover-title{font-family:"Kanit",sans-serif;font-size:24pt;font-weight:700;margin:4mm 0}'+
-    '.cover-class{font-family:"Kanit",sans-serif;font-size:20pt;font-weight:600;color:'+accent+'}'+
-    '.cover-year{font-family:"Kanit",sans-serif;font-size:15pt;font-weight:500;margin:3mm 0}'+
-    '.cover-spacer{flex:1;min-height:2mm;max-height:8mm}'+
-    '.advisor-label{font-family:"Kanit",sans-serif;font-size:12pt;color:#374151;margin-bottom:2mm}'+
-    '.advisor-list{display:flex;flex-direction:column;gap:2mm;align-items:center}'+
-    '.advisor-card{padding:2mm 6mm;border:1px solid '+accent+';border-radius:5mm;min-width:70mm}'+
-    '.advisor-name{font-family:"Kanit",sans-serif;font-weight:600;font-size:12pt}'+
-    '.advisor-pos{font-size:10pt;color:#6b7280}'+
-    '.cover-school-bottom{margin-top:4mm;font-size:10pt;color:#374151;line-height:1.4}'+
+    '.cover-inner{padding:18mm 14mm;text-align:center;height:100%;display:flex;flex-direction:column}'+
+    '.cover-logo{width:90mm;height:90mm;object-fit:contain;margin:0 auto 8mm}'+
+    '.cover-school{font-family:"Kanit",sans-serif;font-size:22pt;font-weight:600;color:'+accent+'}'+
+    '.cover-divider{width:60mm;height:2px;background:'+accent+';margin:5mm auto}'+
+    '.cover-title{font-family:"Kanit",sans-serif;font-size:30pt;font-weight:700;margin:6mm 0}'+
+    '.cover-class{font-family:"Kanit",sans-serif;font-size:24pt;font-weight:600;color:'+accent+'}'+
+    '.cover-year{font-family:"Kanit",sans-serif;font-size:18pt;font-weight:500;margin:4mm 0}'+
+    '.cover-spacer{flex:1;min-height:6mm}'+
+    '.advisor-label{font-family:"Kanit",sans-serif;font-size:14pt;color:#374151;margin-bottom:3mm}'+
+    '.advisor-list{display:flex;flex-direction:column;gap:3mm;align-items:center}'+
+    '.advisor-card{padding:3mm 8mm;border:1px solid '+accent+';border-radius:6mm;min-width:80mm}'+
+    '.advisor-name{font-family:"Kanit",sans-serif;font-weight:600;font-size:14pt}'+
+    '.advisor-pos{font-size:11pt;color:#6b7280}'+
+    '.cover-school-bottom{margin-top:8mm;font-size:12pt;color:#374151;line-height:1.5}'+
     /* Generic page */
     '.page-title{font-family:"Kanit",sans-serif;font-size:22pt;text-align:center;color:'+accent+';margin-bottom:8mm;padding-bottom:3mm;border-bottom:2px solid '+accent+'}'+
     '.page-body p{text-indent:8mm;margin:0 0 4mm;text-align:justify}'+
@@ -3364,20 +3366,20 @@ window.deleteStudent = async function(classId, studentDocId){
     '.toc-tbl td:nth-child(2),.toc-tbl th:nth-child(2){width:30mm;text-align:center}'+
     /* Student page (no padding on .page for student-page, children handle their own) */
     '.student-page{padding:0!important;display:flex;flex-direction:column}'+
-    '@media print{.student-page{min-height:calc(297mm - 2cm)}}'+
-    '.sp-head{background:'+accent+';color:#fff;padding:2.5mm 14mm;font-family:"Kanit",sans-serif;font-size:11pt;font-weight:600;text-align:center;flex-shrink:0}'+
-    '.sp-body{flex:1 1 auto;padding:3mm 14mm 0}'+
-    '.sp-top{display:flex;gap:4mm;align-items:flex-start;margin-bottom:2mm}'+
-    '.photo-frame{width:25mm;height:33mm;border:1.5px solid #333;display:flex;align-items:center;justify-content:center;flex-shrink:0;background:#fafafa;overflow:hidden}'+
+    '@media print{.student-page{min-height:calc(297mm - 3cm)}}'+
+    '.sp-head{background:'+accent+';color:#fff;padding:3.5mm 16mm;font-family:"Kanit",sans-serif;font-size:13pt;font-weight:600;text-align:center;flex-shrink:0}'+
+    '.sp-body{flex:1 1 auto;padding:5mm 16mm 0}'+
+    '.sp-top{display:flex;gap:5mm;align-items:flex-start;margin-bottom:3mm}'+
+    '.photo-frame{width:30mm;height:40mm;border:1.5px solid #333;display:flex;align-items:center;justify-content:center;flex-shrink:0;background:#fafafa;overflow:hidden}'+
     '.photo-frame img{width:100%;height:100%;object-fit:cover}'+
-    '.photo-frame .ph-empty{color:#9ca3af;font-size:8pt;text-align:center}'+
+    '.photo-frame .ph-empty{color:#9ca3af;font-size:9pt;text-align:center}'+
     'body.hide-photo .photo-frame{display:none}'+
-    '.kv-tbl{width:100%;border-collapse:collapse;margin-bottom:1mm}'+
-    '.kv-tbl th{text-align:left;font-weight:600;color:#374151;padding:.7mm 2mm;width:24%;font-size:9pt;background:#f9fafb;vertical-align:top;border-bottom:1px solid #e5e7eb}'+
-    '.kv-tbl td{padding:.7mm 2mm;border-bottom:1px solid #e5e7eb;font-size:9pt;vertical-align:top}'+
+    '.kv-tbl{width:100%;border-collapse:collapse;margin-bottom:2mm}'+
+    '.kv-tbl th{text-align:left;font-weight:600;color:#374151;padding:1.2mm 2mm;width:24%;font-size:10pt;background:#f9fafb;vertical-align:top;border-bottom:1px solid #e5e7eb}'+
+    '.kv-tbl td{padding:1.2mm 2mm;border-bottom:1px solid #e5e7eb;font-size:10pt;vertical-align:top}'+
     '.kv-tbl .dash{color:#9ca3af}'+
-    '.sp-section{font-family:"Kanit",sans-serif;font-size:10pt;font-weight:600;background:#f3f4f6;border-left:4px solid #999;padding:.8mm 4mm;margin:2mm 0 1mm}'+
-    '.sp-foot{margin-top:auto;text-align:center;font-size:8pt;color:#6b7280;border-top:1px solid #e5e7eb;padding:1.5mm 14mm 3mm;flex-shrink:0}';
+    '.sp-section{font-family:"Kanit",sans-serif;font-size:12pt;font-weight:600;background:#f3f4f6;border-left:4px solid #999;padding:1.2mm 4mm;margin:3mm 0 1.5mm}'+
+    '.sp-foot{margin-top:auto;text-align:center;font-size:9pt;color:#6b7280;border-top:1px solid #e5e7eb;padding:2mm 16mm 4mm;flex-shrink:0}';
   }
 
   // ═══════════════ Manual Add Student (in-app form, same schema as CSV import) ═══════════════
