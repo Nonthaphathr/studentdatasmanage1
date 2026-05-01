@@ -3292,7 +3292,7 @@ window.deleteStudent = async function(classId, studentDocId){
     var coverHTML = '<section class="page cover">'+
       '<div class="cover-frame">'+
         '<div class="cover-inner">'+
-          '<div class="cover-logos">'+
+          '<div class="cover-logos" style="display:flex;justify-content:center;align-items:center;gap:6mm;margin-bottom:5mm">'+
           '<img class="cover-logo" src="https://nonthaphathr.github.io/uploadimg/logoclassroominformation.png" onerror="this.style.display=\'none\'">'+
           '<img class="cover-logo" src="https://nonthaphathr.github.io/uploadimg/logoschool.png" onerror="this.style.display=\'none\'">'+
         '</div>'+
@@ -3446,19 +3446,6 @@ window.deleteStudent = async function(classId, studentDocId){
     return parts[parts.length - 1];
   }
 
-  // Strip last name token from Thai full name string, keeping prefix+firstname
-  // e.g. "นาย สมชาย ใจดี" → "นาย สมชาย"
-  //      "นางสาวกาญจนา รักดี" → "นางสาวกาญจนา"  (no space after prefix)
-  function stripLastName(fullname){
-    if(!fullname) return '';
-    var s = String(fullname).trim();
-    if(!s) return '';
-    // Split on whitespace; drop the last token (last name)
-    var parts = s.split(/\s+/).filter(Boolean);
-    if(parts.length <= 1) return s;  // only one token → return as-is
-    return parts.slice(0, parts.length - 1).join(' ');
-  }
-
   function buildStudentPage(s, idx, info, rm, year, schoolName){
     var r = s.raw || {};
     var photoHTML = s.photoURL
@@ -3471,7 +3458,7 @@ window.deleteStudent = async function(classId, studentDocId){
     var addr = [
       stuHouseNo?'บ้านเลขที่ '+stuHouseNo:'',
       r['หมู่นักเรียน']?'หมู่ '+r['หมู่นักเรียน']:'',
-      r['หมู่บ้านนักเรียน']?r['หมู่บ้านนักเรียน'].replace(/^บ้าน/,''):'',
+      r['หมู่บ้านนักเรียน']?'บ้าน'+r['หมู่บ้านนักเรียน']:'',
       r['ตำบลนักเรียน']?'ต.'+r['ตำบลนักเรียน']:'',
       r['อำเภอนักเรียน']?'อ.'+r['อำเภอนักเรียน']:'',
       r['จังหวัดนักเรียน']?'จ.'+r['จังหวัดนักเรียน']:'',
@@ -3482,15 +3469,21 @@ window.deleteStudent = async function(classId, studentDocId){
     var guardianAddr = [
       guarHouseNo?'บ้านเลขที่ '+guarHouseNo:'',
       r['หมู่ผู้ปกครอง']?'หมู่ '+r['หมู่ผู้ปกครอง']:'',
-      r['หมู่บ้านผู้ปกครอง']?r['หมู่บ้านผู้ปกครอง'].replace(/^บ้าน/,''):'',
+      r['หมู่บ้านผู้ปกครอง']?'บ้าน'+r['หมู่บ้านผู้ปกครอง']:'',
       r['ตำบลผู้ปกครอง']?'ต.'+r['ตำบลผู้ปกครอง']:'',
       r['อำเภอผู้ปกครอง']?'อ.'+r['อำเภอผู้ปกครอง']:'',
       r['จังหวัดผู้ปกครอง']?'จ.'+r['จังหวัดผู้ปกครอง']:'',
       r['ไปรษณีย์ผู้ปกครอง']||''
     ].filter(Boolean).join(' ');
 
-    var birth = (r['วันเกิด(วัน)']||'')+' '+(r['วันเกิด(เดือน)']||'')+' '+(r['วันเกิด(ปีพ.ศ.)']||'');
-    birth = birth.trim();
+    var _thMonths = ['','มกราคม','กุมภาพันธ์','มีนาคม','เมษายน','พฤษภาคม','มิถุนายน','กรกฎาคม','สิงหาคม','กันยายน','ตุลาคม','พฤศจิกายน','ธันวาคม'];
+    var _bDay   = String(r['วันเกิด(วัน)']   || r['วันเกิด_วัน']   || '').trim();
+    var _bMonth = String(r['วันเกิด(เดือน)'] || r['วันเกิด_เดือน'] || r['เดือนเกิด'] || '').trim();
+    var _bYear  = String(r['วันเกิด(ปีพ.ศ.)']|| r['วันเกิด_ปีพศ']  || r['ปีเกิด']   || '').trim();
+    // ถ้าเดือนเป็นตัวเลข 1-12 ให้แปลงเป็นชื่อเดือนภาษาไทย
+    var _mNum = parseInt(_bMonth, 10);
+    if(_mNum >= 1 && _mNum <= 12) _bMonth = _thMonths[_mNum];
+    var birth = [_bDay, _bMonth, _bYear].filter(Boolean).join(' ');
 
     var clsLbl = classLabel(info.num, rm.room);
 
@@ -3506,7 +3499,13 @@ window.deleteStudent = async function(classId, studentDocId){
             kvRow('เลขประจำตัวนักเรียน', s.studentId)+
             kvRow('เลขบัตรประชาชน', r['เลขบัตรนักเรียน'])+
             kvRow('วันเกิด', birth, 'อายุ', (r['อายุ'] && r['อายุ']!=='-' && String(r['อายุ']).trim()) ? r['อายุ']+' ปี' : '_BLANK_')+
-            kvRow('เพศ', s.gender, 'หมู่เลือด', r['หมู่เลือด']||'-')+
+            kvRow('เพศ', (function(g,n){
+              if(g && g!=='ไม่ระบุ') return g;
+              n = String(n||'').trim();
+              if(/^(เด็กชาย|ด\.ช\.|นาย)/.test(n)) return 'ชาย';
+              if(/^(เด็กหญิง|ด\.ญ\.|นางสาว|นาง)/.test(n)) return 'หญิง';
+              return g||'-';
+            })(s.gender, r['ชื่อ-สกุลนักเรียน']||s.fullName), 'หมู่เลือด', r['หมู่เลือด']||'-')+
           '</table>'+
         '</div>'+
 
@@ -3532,20 +3531,20 @@ window.deleteStudent = async function(classId, studentDocId){
 
         sectionTitle('ผู้ปกครอง', info.color)+
         '<table class="kv-tbl">'+
-          kvRow('ชื่อผู้ปกครอง', (r['คำนำหน้าผู้ปกครอง']&&r['ชื่อจริงผู้ปกครอง']) ? (r['คำนำหน้าผู้ปกครอง']+' '+r['ชื่อจริงผู้ปกครอง']) : stripLastName(r['ชื่อผู้ปกครอง']), 'ความสัมพันธ์', r['ความสัมพันธ์ผู้ปกครอง'])+
-          kvRow('อาชีพ', r['อาชีพผู้ปกครอง'], 'นามสกุล', r['นามสกุลผู้ปกครอง'] || extractLastName(r['ชื่อผู้ปกครอง']))+
+          kvRow('ชื่อผู้ปกครอง', r['ชื่อผู้ปกครอง'], 'ความสัมพันธ์', r['ความสัมพันธ์ผู้ปกครอง'])+
+          kvRow('อาชีพ', r['อาชีพผู้ปกครอง'], 'โทรมือถือ', r['โทรมือถือผู้ปกครอง'])+
           kvRow('ที่อยู่ผู้ปกครอง', guardianAddr || '-')+
-          kvRow('โทรบ้าน', r['โทรบ้านผู้ปกครอง'], 'โทรมือถือ', r['โทรมือถือผู้ปกครอง'])+
+          kvRow('โทรบ้าน', r['โทรบ้านผู้ปกครอง'])+
         '</table>'+
 
         sectionTitle('บิดา / มารดา', info.color)+
         '<table class="kv-tbl">'+
-          kvRow('ชื่อบิดา', (r['คำนำหน้าบิดา']&&r['ชื่อบิดา']) ? (r['คำนำหน้าบิดา']+' '+r['ชื่อบิดา']) : stripLastName(r['ชื่อ-สกุลบิดา']), 'อาชีพ', r['อาชีพบิดา'])+
-          kvRow('นามสกุลบิดา', r['นามสกุลบิดา'] || extractLastName(r['ชื่อ-สกุลบิดา']), 'โทรบิดา', r['โทรบิดา'])+
-          kvRow('รายได้บิดา/ปี', r['รายได้บิดา'], 'สถานะ', r['สถานะบิดา'])+
-          kvRow('ชื่อมารดา', (r['คำนำหน้ามารดา']&&r['ชื่อมารดา']) ? (r['คำนำหน้ามารดา']+' '+r['ชื่อมารดา']) : stripLastName(r['ชื่อ-สกุลมารดา']), 'อาชีพ', r['อาชีพมารดา'])+
-          kvRow('นามสกุลมารดา', r['นามสกุลมารดา'] || extractLastName(r['ชื่อ-สกุลมารดา']), 'โทรมารดา', r['โทรมารดา'])+
-          kvRow('รายได้มารดา/ปี', r['รายได้มารดา'], 'สถานะ', r['สถานะมารดา'])+
+          kvRow('ชื่อบิดา', r['ชื่อ-สกุลบิดา'], 'อาชีพ', r['อาชีพบิดา'])+
+          kvRow('โทรบิดา', r['โทรบิดา'], 'รายได้/ปี', r['รายได้บิดา'])+
+          kvRow('สถานะบิดา', r['สถานะบิดา'])+
+          kvRow('ชื่อมารดา', r['ชื่อ-สกุลมารดา'], 'อาชีพ', r['อาชีพมารดา'])+
+          kvRow('โทรมารดา', r['โทรมารดา'], 'รายได้/ปี', r['รายได้มารดา'])+
+          kvRow('สถานะมารดา', r['สถานะมารดา'])+
           kvRow('สถานภาพบิดา-มารดา', r['สถานภาพบิดา-มารดา'])+
         '</table>'+
 
@@ -3586,7 +3585,14 @@ window.deleteStudent = async function(classId, studentDocId){
     'body{font-family:"Sarabun",sans-serif;font-size:11pt;line-height:1.35;color:#1f2937;margin:0;background:#e5e7eb}'+
     'h1,h2,h3{font-family:"Kanit",sans-serif;margin:0}'+
     '.page{background:#fff;width:210mm;min-height:297mm;padding:12mm 14mm;margin:6mm auto;page-break-after:always;position:relative;box-shadow:0 4px 14px rgba(0,0,0,.1)}'+
-    '@media print{body{background:#fff}.page{box-shadow:none;margin:0;width:auto;min-height:auto;padding:0}.no-print{display:none!important}}'+
+    '@media print{'+
+    'body{background:#fff}'+
+    '.page{box-shadow:none;margin:0;width:auto;min-height:auto;padding:0}'+
+    '.no-print{display:none!important}'+
+    '.cover.page{height:calc(297mm - 2cm);display:flex;align-items:stretch}'+
+    '.cover .cover-frame{margin:8mm;display:flex;align-items:stretch}'+
+    '.cover .cover-inner{flex:1}'+
+    '}'+
     /* Toolbar */
     '.toolbar{position:sticky;top:0;background:#1f2937;color:#fff;padding:.6rem 1rem;display:flex;gap:.5rem;align-items:center;flex-wrap:wrap;z-index:10}'+
     '.toolbar .btn-prim{background:#16a34a;color:#fff;border:none;padding:.5rem 1rem;border-radius:8px;cursor:pointer;font-family:"Kanit",sans-serif;font-size:14pt}'+
@@ -3594,13 +3600,12 @@ window.deleteStudent = async function(classId, studentDocId){
     '.toolbar .opt{margin-left:auto;font-size:11pt}'+
     /* Cover */
     '.cover{padding:0;display:flex;align-items:stretch;justify-content:stretch}'+
-    '.cover-frame{flex:1;margin:5mm;border:3px double '+accent+';position:relative}'+
+    '.cover-frame{flex:1;margin:10mm;border:3px double '+accent+';position:relative}'+
     '.cover-frame::before,.cover-frame::after{content:"";position:absolute;width:28px;height:28px;border:2px solid '+accent+'}'+
     '.cover-frame::before{top:5mm;left:5mm;border-right:none;border-bottom:none}'+
     '.cover-frame::after{bottom:5mm;right:5mm;border-left:none;border-top:none}'+
-    '.cover-inner{padding:7mm 10mm;text-align:center;height:100%;display:flex;flex-direction:column}'+
-    '.cover-logos{display:flex;justify-content:center;align-items:center;gap:8mm;margin-bottom:5mm}'+
-    '.cover-logo{width:50mm;height:50mm;object-fit:contain}'+
+    '.cover-inner{padding:8mm 10mm;text-align:center;height:100%;display:flex;flex-direction:column}'+
+    '.cover-logo{width:32mm;height:32mm;object-fit:contain}'+
     '.cover-school{font-family:"Kanit",sans-serif;font-size:18pt;font-weight:600;color:'+accent+'}'+
     '.cover-divider{width:50mm;height:2px;background:'+accent+';margin:3mm auto}'+
     '.cover-title{font-family:"Kanit",sans-serif;font-size:24pt;font-weight:700;margin:4mm 0}'+
