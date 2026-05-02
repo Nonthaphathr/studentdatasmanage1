@@ -301,6 +301,47 @@ table.data-tbl .gender-f{color:#be185d}
    PRINT — เอกสารประจำชั้น (เปิดในหน้าต่างใหม่)
    ═══════════════════════════════════════════════════════════════ */
 /* (CSS สำหรับหน้าพิมพ์อยู่ใน window.open ด้านล่าง) */
+
+/* ═══════════════════════════════════════════════════════════════
+   ANALYTICS PAGE
+   ═══════════════════════════════════════════════════════════════ */
+.analytics-hero{background:linear-gradient(135deg,#4338ca 0%,#7c3aed 100%);color:#fff;border-radius:var(--r-lg);padding:1.5rem 1.75rem;margin-bottom:1.25rem;display:flex;align-items:center;gap:1.1rem;flex-wrap:wrap}
+.analytics-hero .ah-icon{font-size:2.5rem;flex-shrink:0}
+.analytics-hero .ah-titles h2{font-family:'Kanit',sans-serif;font-size:1.45rem;color:#fff;margin-bottom:.2rem}
+.analytics-hero .ah-titles p{margin:0;opacity:.9;font-size:.88rem}
+.analytics-hero .ah-actions{margin-left:auto;display:flex;gap:.5rem;flex-wrap:wrap}
+.analytics-stats-row{display:flex;gap:.9rem;flex-wrap:wrap;margin-bottom:1.25rem}
+.analytics-stat-box{flex:1;min-width:90px;background:var(--surface);border:1px solid var(--border);border-radius:var(--r);padding:.85rem 1rem;text-align:center}
+.analytics-stat-box .asb-val{font-family:'Kanit',sans-serif;font-size:1.7rem;font-weight:700}
+.analytics-stat-box .asb-lbl{font-size:.8rem;color:var(--ink-muted);margin-top:.1rem}
+.analytics-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:1.25rem}
+@media(max-width:860px){.analytics-grid{grid-template-columns:1fr}}
+.analytics-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--r-lg);padding:1.5rem}
+.analytics-card.full-width{grid-column:1/-1}
+.analytics-card .ac2-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:1rem;gap:.5rem;flex-wrap:wrap}
+.analytics-card .ac2-head h3{font-family:'Kanit',sans-serif;font-size:1.05rem;display:flex;align-items:center;gap:.4rem;margin:0}
+.bar-chart{display:flex;flex-direction:column;gap:.55rem}
+.bar-row{display:flex;align-items:center;gap:.6rem;font-size:.88rem}
+.bar-label{flex:0 0 145px;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--ink)}
+.bar-track{flex:1;background:var(--bg);border-radius:4px;height:22px;overflow:hidden}
+.bar-fill{height:100%;border-radius:4px;display:flex;align-items:center;padding-left:.4rem;font-size:.75rem;color:#fff;font-weight:600;white-space:nowrap;overflow:hidden;transition:width .5s ease}
+.bar-pct{width:36px;text-align:right;color:var(--ink-muted);font-size:.8rem;flex-shrink:0}
+.bar-count{width:26px;text-align:right;color:var(--ink);font-weight:600;font-size:.85rem;flex-shrink:0}
+.pie-wrap{display:flex;gap:1.5rem;align-items:flex-start;flex-wrap:wrap}
+.pie-legend{display:flex;flex-direction:column;gap:.4rem;flex:1;min-width:120px}
+.pie-legend-item{display:flex;align-items:center;gap:.45rem;font-size:.84rem}
+.pie-dot{width:11px;height:11px;border-radius:3px;flex-shrink:0}
+.btn-pdf{background:linear-gradient(135deg,#dc2626,#b91c1c);color:#fff;border:none;border-radius:var(--r-sm);padding:.38rem .8rem;font-size:.8rem;font-family:inherit;cursor:pointer;display:inline-flex;align-items:center;gap:.3rem;transition:.15s;font-weight:500}
+.btn-pdf:hover{filter:brightness(1.15)}
+.btn-pdf-lg{background:linear-gradient(135deg,#dc2626,#b91c1c);color:#fff;border:none;border-radius:var(--r);padding:.6rem 1.15rem;font-size:.9rem;font-family:inherit;cursor:pointer;display:inline-flex;align-items:center;gap:.4rem;font-weight:600;transition:.15s;white-space:nowrap}
+.btn-pdf-lg:hover{filter:brightness(1.1)}
+.ana-home-card{background:linear-gradient(135deg,#4338ca 0%,#7c3aed 100%);border:none;border-radius:var(--r-lg);padding:1.3rem 1.5rem;color:#fff;cursor:pointer;display:flex;align-items:center;gap:1rem;width:100%;margin-top:1.5rem;transition:.2s;box-shadow:0 8px 24px rgba(67,56,202,.28)}
+.ana-home-card:hover{transform:translateY(-3px);box-shadow:0 14px 36px rgba(67,56,202,.42)}
+.ana-home-card .ahc-icon{background:rgba(255,255,255,.18);width:56px;height:56px;border-radius:14px;display:flex;align-items:center;justify-content:center;font-size:1.7rem;flex-shrink:0}
+.ana-home-card .ahc-text{text-align:left}
+.ana-home-card .ahc-text strong{display:block;font-family:'Kanit',sans-serif;font-size:1.15rem;font-weight:700}
+.ana-home-card .ahc-text small{font-size:.84rem;opacity:.88}
+.ana-home-card .ahc-arrow{margin-left:auto;font-size:1.4rem;opacity:.75}
 </style>
 </head>
 <body>
@@ -792,6 +833,7 @@ window.deleteStudent = async function(classId, studentDocId){
     if(v==='main')           main.innerHTML = renderMainPage();
     else if(v==='grade')     main.innerHTML = renderGradePage();
     else if(v==='studentList') main.innerHTML = renderStudentListPage();
+    else if(v==='analytics')   main.innerHTML = renderAnalyticsPage();
     else                     main.innerHTML = renderMainPage();
 
     // attach handlers via class delegation
@@ -823,6 +865,7 @@ window.deleteStudent = async function(classId, studentDocId){
     else if(act==='editAdvisors'){ openAdvisorsForClass(window.AppState.currentClassId); }
     else if(act==='openSettings'){ openSettingsModal(); }
     else if(act==='openStudent'){ openStudentDetail(p.studentId); }
+    else if(act==='openAnalytics'){ setView('analytics'); }
     else if(act==='addStudentManual'){ window.openManualAddStudent(p.classId); }
     else { console.warn('unknown act', act); }
   }
@@ -852,6 +895,12 @@ window.deleteStudent = async function(classId, studentDocId){
       html += '</div>';
     });
     html += '</div>';
+    // ── Analytics CTA ──
+    html += '<button class="ana-home-card" data-act="openAnalytics">';
+    html += '<div class="ahc-icon">📊</div>';
+    html += '<div class="ahc-text"><strong>ดูข้อมูลสารสนเทศนักเรียน</strong>';
+    html += '<small>กราฟ/สถิติ โรคประจำตัว · โรงเรียนเดิม · หมู่บ้าน · ศาสนา · อาชีพผู้ปกครอง</small></div>';
+    html += '<span class="ahc-arrow">→</span></button>';
     return html;
   }
 
@@ -4286,6 +4335,391 @@ window.deleteStudent = async function(classId, studentDocId){
 
     renderForm();
   };
+})();
+</script>
+<!-- ═══════════════════════════════════════════════════════════════
+     ANALYTICS MODULE — สารสนเทศนักเรียน
+     ═══════════════════════════════════════════════════════════════ -->
+<script>
+(function(){
+
+// ─── Helpers ───────────────────────────────────────────────────
+function escH(s){ return String(s==null?'':s).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];}); }
+
+var PALETTE = [
+  '#4338ca','#e11d48','#ea580c','#16a34a','#0891b2','#7c3aed',
+  '#ca8a04','#db2777','#059669','#b45309','#1d4ed8','#be185d',
+  '#0e7490','#15803d','#7e22ce','#b91c1c'
+];
+
+// ─── Normalization ──────────────────────────────────────────────
+// แปลง "-", "–", "—", "ไม่มี", null, ว่าง → "ไม่ระบุ"
+function normalizeVal(v){
+  if(v==null) return 'ไม่ระบุ';
+  var s = String(v).trim();
+  if(!s || /^[-–—_\s]+$/.test(s)) return 'ไม่ระบุ';
+  if(s==='ไม่มี'||s==='none'||s==='null'||s==='N/A'||s==='n/a') return 'ไม่ระบุ';
+  return s;
+}
+
+// คีย์แบบ fuzzy สำหรับชื่อโรงเรียน/หมู่บ้าน:
+// ลบคำทั่วไป วรรค เครื่องหมาย แล้ว lowercase
+function fuzzyKey(s){
+  if(s==='ไม่ระบุ') return '__unspecified__';
+  return s
+    .replace(/โรงเรียน/g,'').replace(/วิทยาลัย/g,'').replace(/วิทยา/g,'')
+    .replace(/ฯ/g,'').replace(/\s+/g,'').replace(/[.\-_]/g,'')
+    .toLowerCase()
+    .trim() || '__empty__';
+}
+
+// จัดกลุ่มค่าที่คล้ายกัน → ใช้ชื่อที่ยาวที่สุด (สมบูรณ์สุด) เป็นตัวแทน
+function fuzzyGroup(rawMap){
+  var buckets = {}; // fuzzyKey → { canon, students[] }
+  Object.keys(rawMap).forEach(function(label){
+    var fk = fuzzyKey(label);
+    if(!buckets[fk]){
+      buckets[fk] = { canon:label, students:[] };
+    } else {
+      // เลือกชื่อที่ยาวกว่าเป็น canonical
+      if(label.length > buckets[fk].canon.length) buckets[fk].canon = label;
+    }
+    buckets[fk].students = buckets[fk].students.concat(rawMap[label]);
+  });
+  return Object.values(buckets)
+    .map(function(b){ return {label:b.canon, count:b.students.length, students:b.students}; })
+    .sort(function(a,b){ return b.count-a.count; });
+}
+
+// จัดกลุ่มธรรมดา (ไม่ fuzzy)
+function simpleGroup(rawMap){
+  return Object.keys(rawMap)
+    .map(function(k){ return {label:k, count:rawMap[k].length, students:rawMap[k]}; })
+    .sort(function(a,b){ return b.count-a.count; });
+}
+
+// นับและจัดกลุ่มนักเรียนตาม keyFn
+// items ที่ได้: [{label, count, students:[]}]
+function countBy(students, keyFn, useFuzzy){
+  var rawMap = {};
+  students.forEach(function(s){
+    var k = normalizeVal(keyFn(s));
+    rawMap[k] = rawMap[k] || [];
+    rawMap[k].push(s);
+  });
+  return useFuzzy ? fuzzyGroup(rawMap) : simpleGroup(rawMap);
+}
+
+// ─── Chart renderers ───────────────────────────────────────────
+function renderBarChart(items, total){
+  if(!items.length) return '<div class="muted" style="padding:.5rem;font-size:.9rem">ไม่มีข้อมูล</div>';
+  var maxC = items[0].count || 1;
+  var html = '<div class="bar-chart">';
+  items.slice(0,18).forEach(function(item,i){
+    var pct  = total ? (item.count/total*100).toFixed(1) : '0';
+    var barW = Math.round(item.count/maxC*100);
+    var c    = PALETTE[i%PALETTE.length];
+    html += '<div class="bar-row">'+
+      '<div class="bar-label" title="'+escH(item.label)+'">'+escH(item.label)+'</div>'+
+      '<div class="bar-track"><div class="bar-fill" style="width:'+barW+'%;background:'+c+'">'+(barW>16?pct+'%':'')+'</div></div>'+
+      '<div class="bar-pct">'+(barW<=16?pct+'%':'')+'</div>'+
+      '<div class="bar-count">'+item.count+'</div>'+
+      '</div>';
+  });
+  if(items.length>18) html += '<div style="font-size:.8rem;color:var(--ink-muted);margin-top:.3rem">...และอีก '+(items.length-18)+' รายการ</div>';
+  html += '</div>';
+  return html;
+}
+
+function renderPieChart(items){
+  var shown = items.slice(0,9), rest = items.slice(9);
+  if(rest.length){
+    shown.push({label:'อื่นๆ ('+rest.length+' รายการ)', count:rest.reduce(function(s,x){return s+x.count;},0), students:[]});
+  }
+  var total = shown.reduce(function(s,x){return s+x.count;},0);
+  if(!total) return '<div class="muted" style="padding:.5rem;font-size:.9rem">ไม่มีข้อมูล</div>';
+  var cx=80,cy=80,r=72,angle=-Math.PI/2,paths='',legend='';
+  shown.forEach(function(item,i){
+    var sw=(item.count/total)*2*Math.PI; if(sw<0.001) return;
+    var x1=(cx+r*Math.cos(angle)).toFixed(2),y1=(cy+r*Math.sin(angle)).toFixed(2);
+    var a2=angle+sw;
+    var x2=(cx+r*Math.cos(a2)).toFixed(2),y2=(cy+r*Math.sin(a2)).toFixed(2);
+    var c=PALETTE[i%PALETTE.length];
+    paths+='<path d="M'+cx+' '+cy+' L'+x1+' '+y1+' A'+r+' '+r+' 0 '+(sw>Math.PI?1:0)+' 1 '+x2+' '+y2+' Z" fill="'+c+'" stroke="#fff" stroke-width="2.5"/>';
+    legend+='<div class="pie-legend-item">'+
+      '<div class="pie-dot" style="background:'+c+'"></div>'+
+      '<span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+escH(item.label)+'</span>'+
+      '<span style="font-weight:600;color:var(--ink);margin-left:auto;white-space:nowrap">'+item.count+'</span>'+
+      '<span style="color:var(--ink-muted);font-size:.76rem;width:38px;text-align:right"> '+(item.count/total*100).toFixed(1)+'%</span></div>';
+    angle=a2;
+  });
+  return '<div class="pie-wrap">'+
+    '<svg width="160" height="160" viewBox="0 0 160 160" style="flex-shrink:0">'+paths+'</svg>'+
+    '<div class="pie-legend">'+legend+'</div></div>';
+}
+
+// ─── renderAnalyticsPage ────────────────────────────────────────
+window.renderAnalyticsPage = function(){
+  setTimeout(function(){ if(window.setupAnalyticsCharts) window.setupAnalyticsCharts(); }, 40);
+  return '<div class="toolbar">'+
+    '<button class="btn-back" data-act="backMain">← กลับหน้าหลัก</button>'+
+    '<h2 class="section-title" style="margin:0"><span class="ico">📊</span> ข้อมูลสารสนเทศนักเรียน</h2>'+
+    '</div>'+
+    '<div class="analytics-hero">'+
+    '<div class="ah-icon">📊</div>'+
+    '<div class="ah-titles"><h2>ภาพรวมข้อมูลสารสนเทศนักเรียน</h2><p id="anaSubtitle">กำลังโหลดข้อมูล...</p></div>'+
+    '<div class="ah-actions"><button class="btn-pdf-lg" onclick="window.exportAllAnalyticsPDF()">📄 ส่งออกทั้งหมด PDF</button></div>'+
+    '</div>'+
+    '<div class="analytics-stats-row" id="anaStatsRow"></div>'+
+    '<div id="anaChartsContainer">'+
+    '<div style="text-align:center;padding:3rem;color:var(--ink-muted)">'+
+    '<div class="spinner" style="margin:0 auto 1rem"></div>กำลังโหลดข้อมูลนักเรียนทุกห้อง...'+
+    '</div></div>';
+};
+
+// ─── setupAnalyticsCharts ───────────────────────────────────────
+window.setupAnalyticsCharts = async function(){
+  var container=document.getElementById('anaChartsContainer');
+  var statsRow=document.getElementById('anaStatsRow');
+  var subtitle=document.getElementById('anaSubtitle');
+  if(!container) return;
+
+  var st=window.AppState.settings||{}, cur=st.currentAcademicYear;
+  var classes=(window.AppState.classrooms||[]).filter(function(c){ return c.academicYear===cur; });
+
+  try{
+    // โหลดนักเรียนทุกห้อง พร้อมแนบข้อมูลห้องเรียนไปด้วย
+    var allStudents=[];
+    for(var i=0;i<classes.length;i++){
+      var sts=await window.getStudentsOfClass(classes[i].id);
+      var cls=classes[i];
+      sts.forEach(function(s){ s._classRef=cls; }); // แนบ class info
+      allStudents=allStudents.concat(sts);
+    }
+
+    var total=allStudents.length;
+    var males=allStudents.filter(function(s){return s.gender==='ชาย';}).length;
+    var females=allStudents.filter(function(s){return s.gender==='หญิง';}).length;
+
+    if(subtitle) subtitle.textContent='ปีการศึกษา '+cur+' · '+classes.length+' ห้องเรียน · นักเรียน '+total+' คน';
+
+    if(statsRow){
+      statsRow.innerHTML=
+        mkStatBox(total,'นักเรียนทั้งหมด','#4338ca')+
+        mkStatBox(males,'นักเรียนชาย','#1d4ed8')+
+        mkStatBox(females,'นักเรียนหญิง','#be185d')+
+        mkStatBox(classes.length,'ห้องเรียน','#16a34a');
+    }
+
+    // ── 5 หมวดข้อมูล ──
+    // useFuzzy:true → จัดกลุ่มชื่อที่คล้ายกันอัตโนมัติ (เช่น โรงเรียนกระดุมทอง / กระดุมทองวิทยา)
+    var sections=[
+      { id:'sec-disease', icon:'🏥', title:'โรคประจำตัว', type:'bar',
+        items: countBy(allStudents, function(s){
+          var v=s.raw&&s.raw['โรคประจำตัว']; return v||'';
+        }, false) },  // ไม่ fuzzy — ชื่อโรคควรต่างกันชัดเจน
+      { id:'sec-school',  icon:'🏫', title:'โรงเรียนที่จบมา', type:'bar',
+        items: countBy(allStudents, function(s){
+          return (s.raw&&s.raw['โรงเรียนเดิม'])||'';
+        }, true) },   // fuzzy — ชื่อโรงเรียนมักเขียนย่อ/ต่างกัน
+      { id:'sec-village', icon:'🏘️', title:'หมู่บ้าน', type:'bar',
+        items: countBy(allStudents, function(s){
+          return (s.raw&&s.raw['หมู่บ้านนักเรียน'])||'';
+        }, true) },   // fuzzy — ชื่อหมู่บ้านอาจมีช่องว่างต่าง
+      { id:'sec-religion',icon:'🙏', title:'ศาสนาที่นับถือ', type:'pie',
+        items: countBy(allStudents, function(s){
+          return (s.raw&&s.raw['ศาสนานักเรียน'])||'';
+        }, false) },  // ไม่ fuzzy — ศาสนาเป็นคำมาตรฐาน
+      { id:'sec-job',     icon:'💼', title:'อาชีพของผู้ปกครอง', type:'bar',
+        items: countBy(allStudents, function(s){
+          var r=s.raw||{};
+          return r['อาชีพผู้ปกครอง']||r['อาชีพบิดา']||r['อาชีพมารดา']||'';
+        }, false) },  // ไม่ fuzzy — อาชีพควรจับกลุ่มแค่ตามที่กรอกจริง
+    ];
+
+    window._anaData={ sections:sections, total:total, cur:cur, allStudents:allStudents };
+
+    var html='<div class="analytics-grid">';
+    sections.forEach(function(sec){
+      var chart=sec.type==='pie'?renderPieChart(sec.items):renderBarChart(sec.items,total);
+      var fullW=(sec.type==='bar'&&sec.items.length>6)?' full-width':'';
+      html+='<div class="analytics-card'+fullW+'" id="'+sec.id+'">'+
+        '<div class="ac2-head"><h3>'+sec.icon+' '+escH(sec.title)+
+        ' <span class="tag">'+sec.items.length+' ประเภท</span></h3>'+
+        '<button class="btn-pdf" onclick="window.exportSectionPDF(\''+sec.id+'\',\''+escH(sec.title)+'\')">📄 PDF</button>'+
+        '</div>'+chart+'</div>';
+    });
+    html+='</div>';
+    container.innerHTML=html;
+
+  }catch(e){
+    console.error(e);
+    if(container) container.innerHTML=
+      '<div class="room-empty"><div class="ic">❌</div><h3>โหลดข้อมูลไม่สำเร็จ</h3><p>'+escH(e.message)+'</p></div>';
+  }
+};
+
+function mkStatBox(val,lbl,color){
+  return '<div class="analytics-stat-box">'+
+    '<div class="asb-val" style="color:'+color+'">'+val+'</div>'+
+    '<div class="asb-lbl">'+lbl+'</div></div>';
+}
+
+// ─── PDF Export ─────────────────────────────────────────────────
+window.exportSectionPDF=function(secId,title){
+  if(!window._anaData){ window.showToast('กรุณารอโหลดข้อมูลให้เสร็จก่อน','warning'); return; }
+  var sec=window._anaData.sections.find(function(s){ return s.id===secId; });
+  if(!sec) return;
+  printAnalyticsPDF([sec],window._anaData.cur,window._anaData.total,false);
+};
+
+window.exportAllAnalyticsPDF=function(){
+  if(!window._anaData){ window.showToast('กรุณารอโหลดข้อมูลให้เสร็จก่อน','warning'); return; }
+  printAnalyticsPDF(window._anaData.sections,window._anaData.cur,window._anaData.total,true);
+};
+
+// ── helper: แสดงชั้นเรียนของนักเรียน ──
+function stuClass(s){
+  if(!s._classRef) return '';
+  var c=s._classRef;
+  var gi=window.GRADE_INFO&&window.GRADE_INFO[c.grade];
+  var num=gi?gi.num:(c.grade||'').replace('m','');
+  return 'ม.'+num+(c.room?'/'+c.room:'');
+}
+
+function printAnalyticsPDF(sections,cur,total,showSummary){
+  var school=(window.AppState.settings||{}).schoolName||'โรงเรียน';
+  var dateStr=new Date().toLocaleDateString('th-TH',{year:'numeric',month:'long',day:'numeric'});
+
+  var tablesHtml=sections.map(function(sec){
+    var rowTotal=sec.items.reduce(function(s,x){return s+x.count;},0);
+
+    // ── ตารางสรุปสถิติ ──
+    var summaryRows=sec.items.map(function(item,i){
+      var pct=rowTotal?(item.count/rowTotal*100).toFixed(1):'0.0';
+      var bg=i%2===1?'#f8f9ff':'#fff';
+      return '<tr style="background:'+bg+'">'+
+        '<td style="text-align:center">'+(i+1)+'</td>'+
+        '<td>'+escH(item.label)+'</td>'+
+        '<td style="text-align:center;font-weight:600">'+item.count+'</td>'+
+        '<td style="text-align:center">'+pct+'%</td></tr>';
+    }).join('');
+
+    // ── ตารางรายชื่อนักเรียนแยกตามประเภท ──
+    var detailHtml=sec.items.map(function(item){
+      if(!item.students||!item.students.length) return '';
+      // เรียงชื่อตาม order/fullName
+      var sorted=item.students.slice().sort(function(a,b){
+        var oa=parseInt(a.order||9999,10), ob=parseInt(b.order||9999,10);
+        return oa-ob||(a.fullName||'').localeCompare(b.fullName||'','th');
+      });
+      var rows=sorted.map(function(s,i){
+        var bg=i%2===1?'#f8f9ff':'#fff';
+        return '<tr style="background:'+bg+'">'+
+          '<td style="text-align:center;width:40px">'+(i+1)+'</td>'+
+          '<td>'+escH(s.fullName||'-')+'</td>'+
+          '<td style="text-align:center;width:36px">'+escH(s.gender||'-')+'</td>'+
+          '<td style="text-align:center;width:60px">'+escH(stuClass(s))+'</td>'+
+          '</tr>';
+      }).join('');
+      return '<div class="detail-group">'+
+        '<div class="detail-group-title">'+escH(item.label)+' ('+item.count+' คน)</div>'+
+        '<table class="detail-tbl">'+
+        '<thead><tr>'+
+          '<th style="text-align:center;width:40px">ที่</th>'+
+          '<th>ชื่อ-นามสกุล</th>'+
+          '<th style="text-align:center;width:36px">เพศ</th>'+
+          '<th style="text-align:center;width:60px">ชั้น</th>'+
+        '</tr></thead>'+
+        '<tbody>'+rows+'</tbody></table></div>';
+    }).join('');
+
+    return '<div class="pdf-sec">'+
+      '<div class="pdf-sec-title">'+sec.icon+' '+escH(sec.title)+'</div>'+
+      // สถิติรวม
+      '<table>'+
+        '<thead><tr>'+
+          '<th style="width:50px;text-align:center">ลำดับ</th>'+
+          '<th>'+escH(sec.title)+'</th>'+
+          '<th style="width:100px;text-align:center">จำนวน (คน)</th>'+
+          '<th style="width:90px;text-align:center">ร้อยละ (%)</th>'+
+        '</tr></thead>'+
+        '<tbody>'+summaryRows+
+          '<tr class="tr-total">'+
+            '<td colspan="2" style="font-weight:700">รวมทั้งหมด</td>'+
+            '<td style="text-align:center;font-weight:700">'+rowTotal+'</td>'+
+            '<td style="text-align:center;font-weight:700">100.0%</td>'+
+          '</tr>'+
+        '</tbody>'+
+      '</table>'+
+      // รายชื่อนักเรียนแยกประเภท
+      '<div class="detail-section">'+
+        '<div class="detail-section-hd">รายชื่อนักเรียน แยกตาม'+escH(sec.title)+'</div>'+
+        detailHtml+
+      '</div>'+
+    '</div>';
+  }).join('');
+
+  var summaryHtml=showSummary?
+    '<div class="summary-row">'+
+      '<div class="sum-box"><div class="sum-val">'+total+'</div><div class="sum-lbl">นักเรียนทั้งหมด</div></div>'+
+      '<div class="sum-box"><div class="sum-val">'+sections.length+'</div><div class="sum-lbl">หมวดข้อมูล</div></div>'+
+    '</div>':'';
+
+  var html='<!DOCTYPE html><html lang="th"><head>'+
+    '<meta charset="UTF-8"><title>สารสนเทศนักเรียน — '+escH(school)+'</title>'+
+    '<link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@400;600;700&family=Kanit:wght@600;700&display=swap" rel="stylesheet">'+
+    '<style>'+
+    '*{box-sizing:border-box;margin:0;padding:0}'+
+    'body{font-family:"Sarabun",sans-serif;font-size:13px;color:#111;background:#fff;padding:16mm 14mm}'+
+    // ปก
+    '.cover{text-align:center;margin-bottom:1.6rem;padding-bottom:1.2rem;border-bottom:3px solid #4338ca}'+
+    '.cover h1{font-family:"Kanit",sans-serif;font-size:1.5rem;color:#4338ca;margin:.4rem 0 .2rem}'+
+    '.cover .meta{color:#555;font-size:.85rem}'+
+    '.summary-row{display:flex;justify-content:center;gap:1.5rem;margin:1rem 0 0}'+
+    '.sum-box{background:#eef2ff;border:1px solid #c7d2fe;border-radius:8px;padding:.4rem 1.4rem;text-align:center}'+
+    '.sum-val{font-family:"Kanit",sans-serif;font-size:1.35rem;font-weight:700;color:#4338ca}'+
+    '.sum-lbl{color:#555;font-size:.75rem}'+
+    // section
+    '.pdf-sec{margin-bottom:2.5rem}'+
+    '.pdf-sec-title{font-family:"Kanit",sans-serif;font-size:1rem;color:#4338ca;'+
+      'padding:.5rem .85rem;background:#eef2ff;border-left:4px solid #4338ca;'+
+      'border-radius:0 6px 6px 0;margin-bottom:.6rem}'+
+    // สถิติ table
+    'table{width:100%;border-collapse:collapse;margin-bottom:.5rem}'+
+    'th{background:#4338ca;color:#fff;padding:.4rem .6rem;font-weight:600;font-size:12.5px;text-align:left}'+
+    'td{padding:.38rem .6rem;border-bottom:1px solid #e5e7eb;font-size:12.5px}'+
+    'tr.tr-total td{background:#eef2ff;border-top:2px solid #4338ca}'+
+    // detail section
+    '.detail-section{margin-top:1.2rem}'+
+    '.detail-section-hd{font-family:"Kanit",sans-serif;font-size:.88rem;color:#6b7280;'+
+      'padding:.3rem .7rem;background:#f9fafb;border:1px solid #e5e7eb;border-radius:6px;margin-bottom:.7rem}'+
+    '.detail-group{margin-bottom:1.1rem;page-break-inside:avoid}'+
+    '.detail-group-title{font-weight:700;color:#1e3a5f;background:#eff6ff;border-left:3px solid #3b82f6;'+
+      'padding:.3rem .65rem;font-size:.88rem;margin-bottom:.35rem;border-radius:0 4px 4px 0}'+
+    'table.detail-tbl th{background:#3b82f6;font-size:12px;padding:.35rem .55rem}'+
+    'table.detail-tbl td{font-size:12px;padding:.3rem .55rem}'+
+    // footer
+    '.footer{text-align:center;font-size:.75rem;color:#888;margin-top:1.8rem;padding-top:.6rem;border-top:1px solid #e5e7eb}'+
+    '@media print{@page{margin:10mm 8mm}body{padding:0}'+
+    '.detail-group{page-break-inside:avoid}.pdf-sec{page-break-after:auto}}'+
+    '</style></head><body>'+
+    '<div class="cover">'+
+    '<h1>📊 รายงานข้อมูลสารสนเทศนักเรียน</h1>'+
+    '<div class="meta">'+escH(school)+' | ปีการศึกษา '+cur+'</div>'+
+    summaryHtml+
+    '</div>'+
+    tablesHtml+
+    '<div class="footer">พิมพ์โดยระบบสารสนเทศประจำชั้น | '+dateStr+'</div>'+
+    '</body></html>';
+
+  var w=window.open('','_blank','width=960,height=760');
+  if(!w){ window.showToast('กรุณาอนุญาต popup เพื่อส่งออก PDF','warning'); return; }
+  w.document.write(html);
+  w.document.close();
+  setTimeout(function(){ w.focus(); w.print(); },700);
+}
+
 })();
 </script>
 
