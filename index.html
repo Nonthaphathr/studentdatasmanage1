@@ -4362,8 +4362,8 @@ function normalizeVal(v){
   return s;
 }
 
-// คีย์แบบ fuzzy สำหรับชื่อโรงเรียน/หมู่บ้าน:
-// ลบคำทั่วไป วรรค เครื่องหมาย แล้ว lowercase
+// ─── คีย์ fuzzy สำหรับชื่อโรงเรียน/หมู่บ้าน ───────────────────
+// ลบคำนำหน้าทั่วไป วรรค เครื่องหมาย แล้ว lowercase
 function fuzzyKey(s){
   if(s==='ไม่ระบุ') return '__unspecified__';
   return s
@@ -4373,16 +4373,24 @@ function fuzzyKey(s){
     .trim() || '__empty__';
 }
 
-// จัดกลุ่มค่าที่คล้ายกัน → ใช้ชื่อที่ยาวที่สุด (สมบูรณ์สุด) เป็นตัวแทน
+// fuzzyGroup สำหรับโรงเรียน/หมู่บ้าน:
+// → ใช้ชื่อที่มีความถี่สูงสุดในกลุ่มเป็น canonical
+// (ผู้ใช้ปรับข้อมูลแล้ว ชื่อที่ถูกต้องจะมีจำนวนมากกว่า)
 function fuzzyGroup(rawMap){
-  var buckets = {}; // fuzzyKey → { canon, students[] }
+  var buckets = {}; // fuzzyKey → { canon, canonCount, students[] }
   Object.keys(rawMap).forEach(function(label){
     var fk = fuzzyKey(label);
+    var cnt = rawMap[label].length;
     if(!buckets[fk]){
-      buckets[fk] = { canon:label, students:[] };
+      buckets[fk] = { canon:label, canonCount:cnt, students:[] };
     } else {
-      // เลือกชื่อที่ยาวกว่าเป็น canonical
-      if(label.length > buckets[fk].canon.length) buckets[fk].canon = label;
+      // เลือกชื่อที่มีความถี่มากกว่าเป็น canonical
+      // ถ้าเท่ากัน ให้เลือกชื่อที่ยาวกว่า (สมบูรณ์กว่า)
+      if(cnt > buckets[fk].canonCount ||
+         (cnt === buckets[fk].canonCount && label.length > buckets[fk].canon.length)){
+        buckets[fk].canon = label;
+        buckets[fk].canonCount = cnt;
+      }
     }
     buckets[fk].students = buckets[fk].students.concat(rawMap[label]);
   });
@@ -4398,16 +4406,51 @@ function simpleGroup(rawMap){
     .sort(function(a,b){ return b.count-a.count; });
 }
 
+// ─── Fuzzy grouping สำหรับอาชีพผู้ปกครอง ──────────────────────
+// กฎ: keyword (ต้นคำ/ตรงทั้งหมด) → canon label
+var JOB_RULES = [
+  { canon:'รับจ้าง',    patterns:['รับจ้าง'] },
+  { canon:'เกษตรกร',   patterns:['เกษตรกร','ทำนา','ทำสวน','ทำไร่','ชาวนา','ชาวสวน','ชาวไร่'] },
+  { canon:'รปภ.',      patterns:['รปภ','รักษาความปลอดภัย','ยาม'] },
+];
+
+function jobCanon(raw){
+  var s = raw.replace(/\s+/g,'');  // ลบช่องว่างทั้งหมดก่อนเทียบ
+  for(var i=0;i<JOB_RULES.length;i++){
+    var rule = JOB_RULES[i];
+    for(var j=0;j<rule.patterns.length;j++){
+      var p = rule.patterns[j].replace(/\s+/g,'');
+      // ตรงกันตั้งแต่ต้น (startsWith) — ครอบคลุม "รับจ้างทั่วไป" จาก "รับจ้าง"
+      if(s.indexOf(p)===0 || s===p) return rule.canon;
+    }
+  }
+  return raw; // ไม่ตรงกฎใดเลย ใช้ชื่อเดิม
+}
+
+// jobGroup: ใช้กฎ JOB_RULES แล้ว simpleGroup ผลลัพธ์
+function jobGroup(rawMap){
+  var merged = {};
+  Object.keys(rawMap).forEach(function(label){
+    var canon = (label==='ไม่ระบุ') ? 'ไม่ระบุ' : jobCanon(label);
+    merged[canon] = (merged[canon]||[]).concat(rawMap[label]);
+  });
+  return Object.keys(merged)
+    .map(function(k){ return {label:k, count:merged[k].length, students:merged[k]}; })
+    .sort(function(a,b){ return b.count-a.count; });
+}
+
 // นับและจัดกลุ่มนักเรียนตาม keyFn
-// items ที่ได้: [{label, count, students:[]}]
-function countBy(students, keyFn, useFuzzy){
+// mode: 'simple' | 'fuzzy' | 'job'
+function countBy(students, keyFn, mode){
   var rawMap = {};
   students.forEach(function(s){
     var k = normalizeVal(keyFn(s));
     rawMap[k] = rawMap[k] || [];
     rawMap[k].push(s);
   });
-  return useFuzzy ? fuzzyGroup(rawMap) : simpleGroup(rawMap);
+  if(mode==='fuzzy') return fuzzyGroup(rawMap);
+  if(mode==='job')   return jobGroup(rawMap);
+  return simpleGroup(rawMap);
 }
 
 // ─── Chart renderers ───────────────────────────────────────────
@@ -4512,29 +4555,28 @@ window.setupAnalyticsCharts = async function(){
     }
 
     // ── 5 หมวดข้อมูล ──
-    // useFuzzy:true → จัดกลุ่มชื่อที่คล้ายกันอัตโนมัติ (เช่น โรงเรียนกระดุมทอง / กระดุมทองวิทยา)
     var sections=[
       { id:'sec-disease', icon:'🏥', title:'โรคประจำตัว', type:'bar',
         items: countBy(allStudents, function(s){
           var v=s.raw&&s.raw['โรคประจำตัว']; return v||'';
-        }, false) },  // ไม่ fuzzy — ชื่อโรคควรต่างกันชัดเจน
+        }, 'simple') },
       { id:'sec-school',  icon:'🏫', title:'โรงเรียนที่จบมา', type:'bar',
         items: countBy(allStudents, function(s){
           return (s.raw&&s.raw['โรงเรียนเดิม'])||'';
-        }, true) },   // fuzzy — ชื่อโรงเรียนมักเขียนย่อ/ต่างกัน
+        }, 'fuzzy') },   // fuzzy: ชื่อที่มีความถี่มากสุดในกลุ่มเป็น canonical
       { id:'sec-village', icon:'🏘️', title:'หมู่บ้าน', type:'bar',
         items: countBy(allStudents, function(s){
           return (s.raw&&s.raw['หมู่บ้านนักเรียน'])||'';
-        }, true) },   // fuzzy — ชื่อหมู่บ้านอาจมีช่องว่างต่าง
+        }, 'fuzzy') },
       { id:'sec-religion',icon:'🙏', title:'ศาสนาที่นับถือ', type:'pie',
         items: countBy(allStudents, function(s){
           return (s.raw&&s.raw['ศาสนานักเรียน'])||'';
-        }, false) },  // ไม่ fuzzy — ศาสนาเป็นคำมาตรฐาน
+        }, 'simple') },
       { id:'sec-job',     icon:'💼', title:'อาชีพของผู้ปกครอง', type:'bar',
         items: countBy(allStudents, function(s){
           var r=s.raw||{};
           return r['อาชีพผู้ปกครอง']||r['อาชีพบิดา']||r['อาชีพมารดา']||'';
-        }, false) },  // ไม่ fuzzy — อาชีพควรจับกลุ่มแค่ตามที่กรอกจริง
+        }, 'job') },     // job: รวมกลุ่มตามกฎ JOB_RULES
     ];
 
     window._anaData={ sections:sections, total:total, cur:cur, allStudents:allStudents };
