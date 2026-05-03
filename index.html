@@ -4562,7 +4562,7 @@ window.setupAnalyticsCharts = async function(){
         }, 'simple') },
       { id:'sec-school',  icon:'🏫', title:'โรงเรียนที่จบมา', type:'bar',
         items: countBy(allStudents, function(s){
-          return (s.raw&&s.raw['โรงเรียนเดิม'])||'';
+          var r=s.raw||{}; return r['โรงเรียนเดิม']||r['เดิม']||r['ชื่อโรงเรียนเดิม']||r['โรงเรียนที่จบ']||'';
         }, 'fuzzy') },   // fuzzy: ชื่อที่มีความถี่มากสุดในกลุ่มเป็น canonical
       { id:'sec-village', icon:'🏘️', title:'หมู่บ้าน', type:'bar',
         items: countBy(allStudents, function(s){
