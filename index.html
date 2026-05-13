@@ -881,7 +881,7 @@ window.bulkSaveStudents = async function(classId, students){
   // ใช้ writeBatch ครั้งละ 500
   const colRef = collection(db, 'classrooms', classId, 'students');
   // ลบเก่าทั้งหมดก่อน
-  const oldSnap = await getDocs(colRef);
+  let oldSnap; try{ oldSnap = await getDocsFromServer(colRef); }catch(e){ oldSnap = await getDocs(colRef); }
   let bd = writeBatch(db);
   let cnt = 0;
   oldSnap.forEach(d => { bd.delete(d.ref); cnt++; if(cnt>=400){ /* will commit below */ }});
@@ -3167,22 +3167,27 @@ window.deleteStudent = async function(classId, studentDocId){
       tb.innerHTML = '<tr><td colspan="7" class="text-center muted" style="padding:2rem">ไม่พบนักเรียน</td></tr>';
     } else {
       tb.innerHTML = slice.map(function(s){
-        var gc = s.gender==='ชาย'?'gender-m':(s.gender==='หญิง'?'gender-f':'');
+        var _g = (function(g,name){ if(g && g!=='ไม่ระบุ' && g!=='') return g; var n=String(name||'').trim(); if(/^(เด็กชาย|ด.ช.|นาย)/.test(n)) return 'ชาย'; if(/^(เด็กหญิง|ด.ญ.|นางสาว|นาง)/.test(n)) return 'หญิง'; return g||''; })(s.gender,s.fullName); var gc = _g==='ชาย'?'gender-m':(_g==='หญิง'?'gender-f':'');
         return '<tr>'+
           '<td>'+(s.order||'')+'</td>'+
           '<td>'+window.escHTML(s.studentId||'')+'</td>'+
           '<td>'+window.escHTML(s.fullName||'')+'</td>'+
           '<td>'+window.escHTML(s.nickname||'')+'</td>'+
-          '<td class="'+gc+'">'+window.escHTML(s.gender||'')+'</td>'+
+          '<td class="'+gc+'">'+window.escHTML((function(g,name){
+            if(g && g!=='ไม่ระบุ' && g!=='') return g;
+            var n=String(name||'').trim();
+            if(/^(เด็กชาย|ด\.ช\.|นาย)/.test(n)) return 'ชาย';
+            if(/^(เด็กหญิง|ด\.ญ\.|นางสาว|นาง)/.test(n)) return 'หญิง';
+            return g||'';
+          })(s.gender,s.fullName))+'</td>'+
           '<td>'+window.escHTML(s.phone||'')+'</td>'+
-          '<td><button class="btn btn-sm btn-primary" data-act="openStudent" data-p=\'{"studentId":"'+window.escHTML(s.id||'')+'"}\'>👁 ดู</button></td>'+
+          '<td><button class="btn btn-sm btn-primary" data-act="openStudent" data-docid="'+window.escHTML(s.id||'')+'">👁 ดู</button></td>'+
           '</tr>';
       }).join('');
       // re-bind delegates for new rows
       tb.querySelectorAll('[data-act]').forEach(function(el){
         el.onclick = function(){
-          var p = JSON.parse(el.dataset.p);
-          window.openStudentDetail(p.studentId);
+          window.openStudentDetail(el.dataset.docid);
         };
       });
     }
@@ -3450,20 +3455,25 @@ window.deleteStudent = async function(classId, studentDocId){
       });
       if(!ok) return;
       try{
-        window.showLoading(true);
-        await window.deleteStudent(classId, studentDocId);
-        TBL_STATE.all = TBL_STATE.all.filter(function(x){return x.id!==studentDocId});
+        window.showLoading(true,'กำลังลบนักเรียน...');
+        // กรองนักเรียนที่จะลบออก แล้วเรียง order ใหม่
+        var remaining = TBL_STATE.all.filter(function(x){return x.id!==studentDocId});
+        remaining.forEach(function(x,i){ x.order = i+1; });
+        // ใช้ bulkSaveStudents เพื่อ delete+recreate ทุก doc (ป้องกัน TMP ID ล้าสมัย)
+        await window.bulkSaveStudents(classId, remaining);
+        TBL_STATE.all = remaining;
         applyTblFilter();
         // อัปเดตจำนวนใน classroom
         var rm = (window.AppState.classrooms||[]).find(function(c){return c.id===classId});
         if(rm){
           await window.upsertClassroom({
             academicYear: rm.academicYear, grade: rm.grade, room: rm.room,
-            studentCount: TBL_STATE.all.length,
-            maleCount: TBL_STATE.all.filter(function(x){return x.gender==='ชาย'}).length,
-            femaleCount: TBL_STATE.all.filter(function(x){return x.gender==='หญิง'}).length
+            studentCount: remaining.length,
+            maleCount: remaining.filter(function(x){return x.gender==='ชาย'}).length,
+            femaleCount: remaining.filter(function(x){return x.gender==='หญิง'}).length
           });
         }
+        window.AppState.studentsCache = {};
         window.showLoading(false);
         window.showToast('ลบเรียบร้อย','success');
         close();
