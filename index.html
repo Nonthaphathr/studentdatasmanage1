@@ -93,6 +93,14 @@ html.public-form, html.public-form body{background:linear-gradient(135deg,#f0f9f
 .pf-success h2{font-family:'Kanit',sans-serif;color:#059669;font-size:1.5rem;margin:.3rem 0}
 .pf-error{background:#fef2f2;border:1px solid #fca5a5;color:#b91c1c;padding:1rem;border-radius:12px;margin-bottom:1rem}
 .pf-foot{text-align:center;color:#6b7280;font-size:.85rem;margin-top:1.5rem;line-height:1.6}
+/* ═══ Custom autocomplete for public form ═══ */
+.pf-ac-wrap{position:relative;width:100%}
+.pf-ac-wrap input{width:100%;padding:.7rem .85rem;border:1.5px solid #e5e7eb;border-radius:10px;font-size:16px;font-family:inherit;background:#fff;-webkit-appearance:none;touch-action:manipulation;box-sizing:border-box}
+.pf-ac-wrap input:focus{outline:none;border-color:#6366f1;box-shadow:0 0 0 3px rgba(99,102,241,.15)}
+.pf-ac-drop{position:absolute;top:calc(100% + 4px);left:0;right:0;background:#fff;border:1.5px solid #6366f1;border-radius:12px;box-shadow:0 8px 24px rgba(67,56,202,.18);z-index:9999;max-height:220px;overflow-y:auto;-webkit-overflow-scrolling:touch}
+.pf-ac-item{padding:.75rem 1rem;font-size:1rem;font-family:'Sarabun',sans-serif;color:#1f2937;border-bottom:1px solid #f3f4f6;cursor:pointer;-webkit-tap-highlight-color:transparent;touch-action:manipulation}
+.pf-ac-item:last-child{border-bottom:none}
+.pf-ac-item:active,.pf-ac-item.hov{background:#eef2ff;color:#4338ca}
 
 /* ═══════════════════════════════════════════════════════════════
    GRADE CARDS GRID
@@ -2558,7 +2566,10 @@ window.deleteStudent = async function(classId, studentDocId){
           '<div style="background:linear-gradient(135deg,#ede9fe,#fce7f3);border:1px solid #c4b5fd;border-radius:12px;padding:14px;margin-top:14px">'+
             '<div style="font-weight:600;color:#5b21b6;margin-bottom:6px">📄 สร้างเอกสารรวม QR ทุกระดับชั้น</div>'+
             '<div style="font-size:.88em;color:#4c1d95;margin-bottom:10px">เอกสาร A4 1 หน้าที่มี QR Code สำหรับ ม.1–ม.6 ครบทั้งหมด — เหมาะสำหรับติดประกาศหรือแจกให้นักเรียน</div>'+
-            '<button class="btn btn-primary" id="pfmBulkDoc" style="background:linear-gradient(135deg,#7c3aed,#db2777)">🖨️ เปิดเอกสารพิมพ์ QR ทั้งหมด</button>'+
+            '<div style="display:flex;flex-wrap:wrap;gap:.5rem">'+
+            '<button class="btn btn-primary" id="pfmBulkDoc" style="background:linear-gradient(135deg,#7c3aed,#db2777)">🖨️ 1 หน้ารวมทุกชั้น</button>'+
+            '<button class="btn btn-primary" id="pfmBulkDocPerPage" style="background:linear-gradient(135deg,#0891b2,#0e7490)">📄 แยกหน้าละ 1 (6 หน้า)</button>'+
+            '</div>'+
           '</div>'+
 
         '</div>'+
@@ -2622,6 +2633,10 @@ window.deleteStudent = async function(classId, studentDocId){
 
       bd.querySelector('#pfmBulkDoc').onclick = function(){
         openBulkQrDoc(year, room);
+      };
+
+      bd.querySelector('#pfmBulkDocPerPage').onclick = function(){
+        openBulkQrDocPerPage(year, room);
       };
     }
 
@@ -2700,6 +2715,76 @@ window.deleteStudent = async function(classId, studentDocId){
             '<strong>'+window.escHTML(schoolName)+'</strong> — ระบบสารสนเทศประจำชั้นเรียน'+
           '</div>'+
         '</div>'+
+        '</body></html>';
+
+      var w = window.open('', '_blank');
+      if(!w){ window.showToast('โปรดอนุญาต Pop-up เพื่อเปิดเอกสาร','warning'); return; }
+      w.document.open(); w.document.write(html); w.document.close();
+    }
+
+    function openBulkQrDocPerPage(yr, rm){
+      var st = window.AppState.settings || {};
+      var schoolName = st.schoolName || 'โรงเรียนกระดุมทองวิทยา';
+      var logo = st.schoolLogo || 'https://nonthaphathr.github.io/uploadimg/logorecruit2026.png';
+      var grades = ['m1','m2','m3','m4','m5','m6'];
+      var year = yr || st.currentAcademicYear;
+
+      var pages = grades.map(function(g){
+        var info = window.GRADE_INFO[g];
+        var p = ['grade='+g, 'year='+year];
+        if(rm) p.push('room='+encodeURIComponent(rm));
+        var formUrl = baseUrl + '#form?' + p.join('&');
+        var qr = 'https://api.qrserver.com/v1/create-qr-code/?size=600x600&margin=16&data=' + encodeURIComponent(formUrl);
+        return '<div class="pp-page">'+
+          '<div class="pp-head">'+
+            '<img class="pp-logo" src="'+window.escHTML(logo)+'" alt="" onerror="this.style.display=\'none\'">'+
+            '<div class="pp-titles">'+
+              '<div class="pp-school">'+window.escHTML(schoolName)+'</div>'+
+              '<div class="pp-year">ปีการศึกษา '+year+'</div>'+
+            '</div>'+
+          '</div>'+
+          '<div class="pp-body">'+
+            '<div class="pp-grade-badge" style="background:'+info.color+'">ชั้นมัธยมศึกษาปีที่ '+info.num+'</div>'+
+            '<img class="pp-qr" src="'+qr+'" alt="QR ม.'+info.num+'" crossorigin="anonymous">'+
+            '<div class="pp-label">สแกน QR Code เพื่อกรอกข้อมูลส่วนตัว</div>'+
+            '<div class="pp-desc"><strong>คำอธิบาย:</strong> นักเรียนสามารถใช้โทรศัพท์มือถือสแกน QR Code ตามระดับชั้นที่ตนเองสังกัด เพื่อเข้าสู่แบบฟอร์มกรอกข้อมูลส่วนบุคคล ที่อยู่ ผู้ปกครอง บิดา-มารดา และข้อมูลการเดินทาง ข้อมูลที่กรอกจะเข้าสู่ระบบสารสนเทศประจำชั้นเรียนของครูที่ปรึกษาโดยตรง</div>'+
+            '<div class="pp-url" style="color:'+info.color+'">'+window.escHTML(formUrl.length>80?formUrl.slice(0,80)+'…':formUrl)+'</div>'+
+          '</div>'+
+          '<div class="pp-foot">พัฒนาโดย ครูนนทพัทธ์ หิรัญเรือง — ระบบสารสนเทศประจำชั้นเรียน '+window.escHTML(schoolName)+'</div>'+
+        '</div>';
+      }).join('');
+
+      var html = '<!DOCTYPE html><html lang="th"><head><meta charset="UTF-8">'+
+        '<title>QR Code แยกหน้า — '+window.escHTML(schoolName)+'</title>'+
+        '<link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@400;600;700&family=Kanit:wght@500;600;700;800&display=swap" rel="stylesheet">'+
+        '<style>'+
+          '@page{size:A4 portrait;margin:0}'+
+          '*{box-sizing:border-box;margin:0;padding:0}'+
+          'body{font-family:"Sarabun",sans-serif;background:#e5e7eb}'+
+          '.toolbar{position:fixed;top:0;left:0;right:0;background:#1f2937;color:#fff;padding:10px 16px;display:flex;gap:10px;align-items:center;z-index:100;box-shadow:0 2px 8px rgba(0,0,0,.3)}'+
+          '.toolbar h2{margin:0;font-family:"Kanit",sans-serif;font-size:14pt;flex:1}'+
+          '.toolbar button{background:#10b981;color:#fff;border:none;padding:8px 18px;border-radius:8px;cursor:pointer;font-family:"Kanit",sans-serif;font-size:12pt;font-weight:600}'+
+          '.toolbar button.cl{background:#6b7280}'+
+          '.wrap{padding:54px 0 16px}'+
+          '.pp-page{background:#fff;width:210mm;min-height:297mm;margin:10mm auto;box-shadow:0 4px 20px rgba(0,0,0,.12);display:flex;flex-direction:column;page-break-after:always;break-after:page}'+
+          '.pp-head{display:flex;align-items:center;gap:14px;padding:12mm 14mm 8mm;border-bottom:2px solid #e5e7eb}'+
+          '.pp-logo{width:56px;height:56px;border-radius:50%;object-fit:contain;border:1.5px solid #e5e7eb;flex-shrink:0}'+
+          '.pp-school{font-family:"Kanit",sans-serif;font-size:14pt;font-weight:600;color:#1f2937}'+
+          '.pp-year{font-size:11pt;color:#6b7280;margin-top:2px}'+
+          '.pp-body{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:10mm 14mm;gap:8mm}'+
+          '.pp-grade-badge{font-family:"Kanit",sans-serif;font-size:22pt;font-weight:800;color:#fff;padding:10px 40px;border-radius:999px;letter-spacing:.5px}'+
+          '.pp-qr{width:130mm;height:130mm;image-rendering:crisp-edges}'+
+          '.pp-label{font-family:"Kanit",sans-serif;font-size:15pt;font-weight:600;color:#374151;text-align:center}'+
+          '.pp-desc{font-size:11pt;color:#374151;text-align:center;max-width:155mm;line-height:1.7;background:#f0f9ff;border-left:4px solid #0369a1;border-radius:4px;padding:8px 14px}.pp-url{font-size:8.5pt;color:#6b7280;word-break:break-all;text-align:center;max-width:160mm;font-family:monospace;background:#f9fafb;padding:6px 10px;border-radius:6px;border:1px solid #e5e7eb}'+
+          '.pp-foot{padding:6mm 14mm;border-top:1px solid #e5e7eb;font-size:9pt;color:#9ca3af;text-align:center}'+
+          '@media print{body{background:#fff}.toolbar{display:none}.wrap{padding:0}.pp-page{box-shadow:none;margin:0;width:auto;min-height:100vh}}'+
+        '</style></head><body>'+
+        '<div class="toolbar">'+
+          '<h2>📄 QR Code แยกหน้า (6 หน้า) — '+window.escHTML(schoolName)+'</h2>'+
+          '<button onclick="window.print()">🖨️ พิมพ์เอกสาร</button>'+
+          '<button class="cl" onclick="window.close()">← ปิด</button>'+
+        '</div>'+
+        '<div class="wrap">'+pages+'</div>'+
         '</body></html>';
 
       var w = window.open('', '_blank');
@@ -4234,7 +4319,7 @@ window.deleteStudent = async function(classId, studentDocId){
               '<div class="pf-row"><label>ศาสนา</label><input type="text" id="pfReligion" value="พุทธ"></div>'+
             '</div>'+
             '<div class="pf-row"><label>โรคประจำตัว</label><input type="text" id="pfDisease" placeholder="กรอกชื่อโรค หากไม่มีให้พิมพ์ว่า ไม่มี"></div>'+
-            '<div class="pf-row"><label>โรงเรียนเดิม</label><input type="text" id="pfOldSchool" list="pfSchoolList" autocomplete="off"><datalist id="pfSchoolList"></datalist></div>'+
+            '<div class="pf-row"><label>โรงเรียนเดิม</label><div class="pf-ac-wrap" id="pfOldSchoolWrap"><input type="text" id="pfOldSchool" autocomplete="off" placeholder="ชื่อโรงเรียนที่เคยเรียน" style="width:100%"><div class="pf-ac-drop" id="pfOldSchoolDrop" style="display:none"></div></div></div>'+
           '</div>'+
 
           '<div class="pf-card">'+
@@ -4243,7 +4328,7 @@ window.deleteStudent = async function(classId, studentDocId){
               '<div class="pf-row"><label>บ้านเลขที่</label><input type="text" id="pfHouseNo"></div>'+
               '<div class="pf-row"><label>หมู่</label><input type="text" id="pfMoo" inputmode="numeric"></div>'+
             '</div>'+
-            '<div class="pf-row"><label>ชื่อหมู่บ้าน</label><input type="text" id="pfVillage" list="pfVillageList" autocomplete="off" placeholder="เช่น บ้านหนองดุม"><datalist id="pfVillageList"></datalist></div>'+
+            '<div class="pf-row"><label>ชื่อหมู่บ้าน</label><div class="pf-ac-wrap" id="pfVillageWrap"><input type="text" id="pfVillage" autocomplete="off" placeholder="เช่น บ้านหนองดุม" style="width:100%"><div class="pf-ac-drop" id="pfVillageDrop" style="display:none"></div></div></div>'+
             '<div class="pf-grid">'+
               '<div class="pf-row"><label>ตำบล</label><input type="text" id="pfSubdistrict"></div>'+
               '<div class="pf-row"><label>อำเภอ</label><input type="text" id="pfDistrict"></div>'+
@@ -4535,20 +4620,67 @@ window.deleteStudent = async function(classId, studentDocId){
 
     renderForm();
 
-    // ── Populate datalists from settings suggestSchools / suggestVillages ──
+    // ── Custom autocomplete for pfVillage & pfOldSchool (mobile-friendly) ──
     (function(){
       var st = window.AppState && window.AppState.settings;
       if(!st) return;
-      function fillDatalist(listId, items){
-        var dl = document.getElementById(listId);
-        if(!dl || !items || !items.length) return;
-        dl.innerHTML = items.map(function(v){ return '<option value="'+window.escHTML(v)+'">'; }).join('');
+      var schools  = (st.suggestSchools  || []).filter(Boolean);
+      var villages = (st.suggestVillages || []).filter(Boolean);
+
+      function setupAc(inputId, dropId, items){
+        if(!items || !items.length) return;
+        setTimeout(function(){
+          var inp = document.getElementById(inputId);
+          var drop = document.getElementById(dropId);
+          if(!inp || !drop) return;
+          var active = false;
+
+          function showDrop(filter){
+            var q = (filter||'').trim().toLowerCase();
+            var hits = q ? items.filter(function(v){ return v.toLowerCase().indexOf(q)>=0; }) : items;
+            if(!hits.length){ drop.style.display='none'; return; }
+            drop.innerHTML = hits.map(function(v){
+              return '<div class="pf-ac-item" data-val="'+window.escHTML(v)+'">'+window.escHTML(v)+'</div>';
+            }).join('');
+            drop.style.display = 'block';
+            drop.querySelectorAll('.pf-ac-item').forEach(function(item){
+              // Use touchstart + mousedown for fast mobile tap
+              function pick(e){
+                e.preventDefault();
+                inp.value = item.dataset.val;
+                drop.style.display = 'none';
+                active = false;
+                inp.blur();
+              }
+              item.addEventListener('touchstart', pick, {passive:false});
+              item.addEventListener('mousedown', pick);
+            });
+          }
+
+          inp.addEventListener('focus', function(){
+            active = true;
+            showDrop(inp.value);
+          });
+          inp.addEventListener('input', function(){
+            active = true;
+            showDrop(inp.value);
+          });
+          // Close on outside touch/click
+          document.addEventListener('touchstart', function(e){
+            if(active && !inp.contains(e.target) && !drop.contains(e.target)){
+              drop.style.display='none'; active=false;
+            }
+          }, {passive:true});
+          document.addEventListener('mousedown', function(e){
+            if(active && !inp.contains(e.target) && !drop.contains(e.target)){
+              drop.style.display='none'; active=false;
+            }
+          });
+        }, 200);
       }
-      // slight delay so DOM is ready
-      setTimeout(function(){
-        fillDatalist('pfSchoolList',  st.suggestSchools  || []);
-        fillDatalist('pfVillageList', st.suggestVillages || []);
-      }, 150);
+
+      setupAc('pfOldSchool', 'pfOldSchoolDrop', schools);
+      setupAc('pfVillage',   'pfVillageDrop',   villages);
     })();
   };
 })();
