@@ -214,6 +214,28 @@ html.public-form, html.public-form body{background:linear-gradient(135deg,#f0f9f
 .modal-body{flex:1;overflow-y:auto;padding:1.25rem}
 .modal-foot{padding:.85rem 1.25rem;border-top:1px solid var(--border);display:flex;justify-content:flex-end;gap:.5rem;flex-wrap:wrap}
 
+/* ═══ PHONE MINI-MODAL ═══ */
+.phone-icon-btn{background:none;border:none;padding:0;font-size:1.2rem;cursor:pointer;line-height:1;transition:transform .15s}
+.phone-icon-btn:hover{transform:scale(1.2)}
+#phoneModal{position:fixed;inset:0;z-index:2000;display:flex;align-items:center;justify-content:center;padding:1rem;background:rgba(15,23,42,.5);opacity:0;visibility:hidden;transition:.2s}
+#phoneModal.show{opacity:1;visibility:visible}
+#phoneModal .pm-box{background:var(--surface);border-radius:var(--r-lg);width:100%;max-width:340px;box-shadow:var(--shadow-lg);transform:translateY(16px);transition:.25s;overflow:hidden}
+#phoneModal.show .pm-box{transform:none}
+.pm-head{background:linear-gradient(135deg,#4338ca,#6366f1);color:#fff;padding:.85rem 1rem;display:flex;align-items:center;gap:.6rem}
+.pm-head .pm-title{flex:1;font-family:'Kanit',sans-serif;font-size:1rem;font-weight:600}
+.pm-head .pm-close{background:rgba(255,255,255,.2);border:none;color:#fff;width:28px;height:28px;border-radius:8px;font-size:1.1rem;cursor:pointer;display:flex;align-items:center;justify-content:center}
+.pm-head .pm-close:hover{background:rgba(255,255,255,.35)}
+.pm-list{padding:.5rem 0}
+.pm-row{display:flex;align-items:center;gap:.75rem;padding:.6rem 1rem;border-bottom:1px solid var(--border)}
+.pm-row:last-child{border-bottom:none}
+.pm-row .pm-label{flex:1;min-width:0}
+.pm-row .pm-label .pm-who{font-size:.78rem;color:var(--ink-muted);line-height:1.2}
+.pm-row .pm-label .pm-name{font-size:.85rem;font-weight:500;color:var(--ink);line-height:1.3;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.pm-row .pm-call{display:flex;align-items:center;justify-content:center;width:38px;height:38px;border-radius:50%;background:#16a34a;color:#fff;font-size:1.1rem;text-decoration:none;flex-shrink:0;transition:.15s}
+.pm-row .pm-call:hover{background:#15803d;transform:scale(1.08)}
+.pm-row .pm-call.disabled{background:var(--border);color:var(--ink-muted);pointer-events:none}
+.pm-row .pm-number{font-size:.9rem;font-weight:600;color:var(--primary);font-family:monospace;margin-top:1px}
+
 /* ═══════════════════════════════════════════════════════════════
    TOAST
    ═══════════════════════════════════════════════════════════════ */
@@ -3265,14 +3287,41 @@ window.deleteStudent = async function(classId, studentDocId){
             if(/^(เด็กหญิง|ด\.ญ\.|นางสาว|นาง)/.test(n)) return 'หญิง';
             return g||'';
           })(s.gender,s.fullName))+'</td>'+
-          '<td>'+window.escHTML(s.phone||'')+'</td>'+
+          '<td style="text-align:center">'+
+          (function(s){
+            var raw = s.raw||{};
+            var sp  = s.phone||raw['โทรนักเรียน']||'';
+            var fp  = raw['โทรบิดา']||'';
+            var fn  = raw['ชื่อ-สกุลบิดา']||raw['ชื่อบิดา']||'';
+            var mp  = raw['โทรมารดา']||'';
+            var mn  = raw['ชื่อ-สกุลมารดา']||raw['ชื่อมารดา']||'';
+            var gp  = raw['โทรมือถือผู้ปกครอง']||raw['โทรบ้านผู้ปกครอง']||'';
+            var gn  = raw['ชื่อผู้ปกครอง']||'';
+            var gr  = raw['ความสัมพันธ์ผู้ปกครอง']||'';
+            if(!sp&&!fp&&!mp&&!gp) return '<span style="color:#ccc">—</span>';
+            return '<button class="phone-icon-btn" data-act="showPhone"'+
+              ' data-sp="'+window.escHTML(sp)+'"'+
+              ' data-fp="'+window.escHTML(fp)+'"'+
+              ' data-fn="'+window.escHTML(fn)+'"'+
+              ' data-mp="'+window.escHTML(mp)+'"'+
+              ' data-mn="'+window.escHTML(mn)+'"'+
+              ' data-gp="'+window.escHTML(gp)+'"'+
+              ' data-gn="'+window.escHTML(gn)+'"'+
+              ' data-gr="'+window.escHTML(gr)+'"'+
+              ' data-sname="'+window.escHTML(s.fullName||'')+'">📞</button>';
+          })(s)+
+          '</td>'+
           '<td><button class="btn btn-sm btn-primary" data-act="openStudent" data-docid="'+window.escHTML(s.id||'')+'">👁 ดู</button></td>'+
           '</tr>';
       }).join('');
       // re-bind delegates for new rows
       tb.querySelectorAll('[data-act]').forEach(function(el){
         el.onclick = function(){
-          window.openStudentDetail(el.dataset.docid);
+          if(el.dataset.act==='showPhone'){
+            window.showPhoneModal(el.dataset);
+          } else {
+            window.openStudentDetail(el.dataset.docid);
+          }
         };
       });
     }
@@ -5116,5 +5165,56 @@ function printAnalyticsPDF(sections,cur,total,showSummary){
 })();
 </script>
 
+<!-- ═══ PHONE MINI-MODAL HTML ═══ -->
+<div id="phoneModal" role="dialog" aria-modal="true">
+  <div class="pm-box">
+    <div class="pm-head">
+      <span style="font-size:1.3rem">📞</span>
+      <div class="pm-title" id="pmTitle">ข้อมูลเบอร์โทร</div>
+      <button class="pm-close" id="pmClose" aria-label="ปิด">×</button>
+    </div>
+    <div class="pm-list" id="pmList"></div>
+  </div>
+</div>
+
+<script>
+(function(){
+  var modal = document.getElementById('phoneModal');
+  var pmList = document.getElementById('pmList');
+  var pmTitle = document.getElementById('pmTitle');
+  document.getElementById('pmClose').onclick = closePhone;
+  modal.addEventListener('click', function(e){ if(e.target===modal) closePhone(); });
+  document.addEventListener('keydown', function(e){ if(e.key==='Escape') closePhone(); });
+
+  function closePhone(){ modal.classList.remove('show'); }
+
+  function phoneRow(who, name, phone){
+    var hasPhone = phone && phone.trim();
+    return '<div class="pm-row">'+
+      '<div class="pm-label">'+
+        '<div class="pm-who">'+who+'</div>'+
+        (name ? '<div class="pm-name">'+window.escHTML(name)+'</div>' : '')+
+        (hasPhone ? '<div class="pm-number">'+window.escHTML(phone)+'</div>' : '<div class="pm-who" style="color:#bbb">ไม่มีข้อมูล</div>')+
+      '</div>'+
+      (hasPhone
+        ? '<a class="pm-call" href="tel:'+encodeURIComponent(phone.replace(/[^0-9+]/g,''))+'" aria-label="โทร '+phone+'">📞</a>'
+        : '<span class="pm-call disabled">📞</span>')+
+    '</div>';
+  }
+
+  window.showPhoneModal = function(d){
+    var sname = d.sname || 'นักเรียน';
+    pmTitle.textContent = sname;
+    var rows = '';
+    rows += phoneRow('เบอร์โทรนักเรียน', '', d.sp||'');
+    rows += phoneRow('เบอร์โทรบิดา', d.fn||'', d.fp||'');
+    rows += phoneRow('เบอร์โทรมารดา', d.mn||'', d.mp||'');
+    var guardLabel = 'เบอร์โทรผู้ปกครอง'+(d.gr?(' ('+d.gr+')'):'');
+    rows += phoneRow(guardLabel, d.gn||'', d.gp||'');
+    pmList.innerHTML = rows;
+    modal.classList.add('show');
+  };
+})();
+</script>
 </body>
 </html>
