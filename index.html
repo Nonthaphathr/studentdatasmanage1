@@ -908,30 +908,43 @@ window.getStudentsOfClass = async function(classId, forceServer){
 };
 
 window.bulkSaveStudents = async function(classId, students){
-  // ใช้ writeBatch ครั้งละ 500
+  // ══ SAFE WRITE: เพิ่มใหม่ก่อน → ลบเก่าทีหลัง ══
+  // ป้องกันข้อมูลหายถ้า batch ที่ 2 fail (write-before-delete pattern)
   const colRef = collection(db, 'classrooms', classId, 'students');
-  // ลบเก่าทั้งหมดก่อน
-  let oldSnap; try{ oldSnap = await getDocsFromServer(colRef); }catch(e){ oldSnap = await getDocs(colRef); }
-  let bd = writeBatch(db);
-  let cnt = 0;
-  oldSnap.forEach(d => { bd.delete(d.ref); cnt++; if(cnt>=400){ /* will commit below */ }});
-  await bd.commit();
-  // เพิ่มใหม่
+
+  // ── ขั้น 1: อ่าน doc IDs เก่าไว้ก่อน (ยังไม่ลบ) ──
+  let oldSnap;
+  try{ oldSnap = await getDocsFromServer(colRef); }catch(e){ oldSnap = await getDocs(colRef); }
+  const oldIds = [];
+  oldSnap.forEach(d => oldIds.push(d.ref));
+
+  // ── ขั้น 2: เพิ่ม/อัปเดต doc ใหม่ทั้งหมดก่อน ──
+  const newIds = new Set();
   let bw = writeBatch(db);
   let n = 0;
   for(const s of students){
     const rawSid = String(s.studentId||'').trim();
     const sanitized = rawSid.replace(/[^a-zA-Z0-9_-]/g,'_');
-    // ป้องกัน Firestore reserved IDs (__), blank, หรือ all-symbol results
     const docId = (sanitized && !/^[_-]+$/.test(sanitized))
       ? sanitized
       : ('TMP_'+Math.random().toString(36).slice(2,10));
+    newIds.add(docId);
     const ref = doc(db, 'classrooms', classId, 'students', docId);
     bw.set(ref, Object.assign({}, s, {createdAt: serverTimestamp(), updatedAt: serverTimestamp()}));
     n++;
     if(n%400===0){ await bw.commit(); bw = writeBatch(db); }
   }
-  if(n%400!==0) await bw.commit();
+  if(n===0 || n%400!==0) await bw.commit();
+
+  // ── ขั้น 3: ลบเฉพาะ doc เก่าที่ไม่อยู่ใน newIds ──
+  // (ถ้าขั้น 2 fail จะ throw ก่อนถึงขั้นนี้ → ข้อมูลเก่ายังอยู่ครบ)
+  let bd = writeBatch(db);
+  let dc = 0;
+  for(const ref of oldIds){
+    if(!newIds.has(ref.id)){ bd.delete(ref); dc++; }
+    if(dc>0 && dc%400===0){ await bd.commit(); bd = writeBatch(db); dc=0; }
+  }
+  if(dc>0) await bd.commit();
 };
 
 window.updateStudent = async function(classId, studentDocId, patch){
@@ -2134,6 +2147,7 @@ window.deleteStudent = async function(classId, studentDocId){
       '<div class="flex flex-wrap">'+
       '<button class="btn btn-success" id="stBackup">⬇️ สำรองข้อมูลทั้งระบบ (JSON)</button>'+
       '<button class="btn" id="stRestore">⬆️ กู้คืนจากไฟล์</button>'+
+      '<button class="btn" id="stExportAllXlsx">📊 Export นักเรียนทั้งระบบ (.xlsx)</button>'+
       '</div></div>'+
 
       '<div class="set-section"><h4 style="color:var(--danger)">🗑️ Danger Zone</h4>'+
@@ -2169,6 +2183,7 @@ window.deleteStudent = async function(classId, studentDocId){
     bd.querySelector('#stVillageUp').onclick = function(){ close(); window.importVillageData(); };
     bd.querySelector('#stBackup').onclick = function(){ close(); window.backupAll(); };
     bd.querySelector('#stRestore').onclick = function(){ close(); window.restoreAll(); };
+    bd.querySelector('#stExportAllXlsx').onclick = function(){ close(); window.exportAllStudentsXlsx(); };
     bd.querySelector('#stClear').onclick = function(){ close(); window.clearAllData(); };
 
     // ── Suggest lists — load & live-preview ──
@@ -2853,6 +2868,112 @@ window.deleteStudent = async function(classId, studentDocId){
       window.showLoading(false);
       window.showToast('สำรองข้อมูลเรียบร้อย','success');
     }catch(e){ window.showLoading(false); window.showToast('สำรองไม่สำเร็จ: '+e.message,'error'); }
+  };
+
+  // ═══════════════ Export นักเรียนทั้งระบบ (.xlsx) ═══════════════
+  window.exportAllStudentsXlsx = async function(){
+    try{
+      var classes = (window.AppState.classrooms||[]);
+      var curYear = (window.AppState.settings||{}).currentAcademicYear;
+      // กรองเฉพาะปีปัจจุบัน แต่ถ้าไม่มีเลยให้เอาทั้งหมด
+      var targets = classes.filter(function(c){ return c.academicYear===curYear; });
+      if(!targets.length) targets = classes.slice();
+      if(!targets.length){ window.showToast('ไม่มีห้องเรียนในระบบ','warning'); return; }
+
+      // เรียงตาม grade → room
+      var gradeOrder = {m1:1,m2:2,m3:3,m4:4,m5:5,m6:6};
+      targets.sort(function(a,b){
+        var ga = gradeOrder[a.grade]||9, gb = gradeOrder[b.grade]||9;
+        if(ga!==gb) return ga-gb;
+        return String(a.room||'').localeCompare(String(b.room||''),'th');
+      });
+
+      window.showLoading(true,'กำลังโหลดข้อมูลทุกห้อง...');
+      var wb = XLSX.utils.book_new();
+      var summaryRows = []; // sheet สรุปรวม
+
+      for(var i=0;i<targets.length;i++){
+        var c = targets[i];
+        var info = window.GRADE_INFO[c.grade]||{num:'?'};
+        var label = 'ม.'+info.num+(c.room?'-'+c.room:'');
+        window.showLoading(true,'กำลังโหลด '+label+'...');
+
+        var students = await window.getStudentsOfClass(c.id, true);
+
+        // Sheet ของห้องนี้
+        var rows = students.map(function(s, idx){
+          var raw = s.raw||{};
+          // วันเกิด — เก็บแยก 3 field ใน raw
+          var bDay   = String(raw['วันเกิด(วัน)']   || raw['วันเกิด_วัน']   || '').trim();
+          var bMonth = String(raw['วันเกิด(เดือน)'] || raw['วันเกิด_เดือน'] || raw['เดือนเกิด'] || '').trim();
+          var bYear  = String(raw['วันเกิด(ปีพ.ศ.)']|| raw['วันเกิด_ปีพศ']  || raw['ปีเกิด']   || '').trim();
+          var birthDate = (bDay && bMonth && bYear)
+            ? (bDay+'/'+bMonth+'/'+bYear)
+            : (raw['วันเดือนปีเกิด']||raw['วันเกิด']||s.birthDate||'');
+          // โรงเรียนเดิม — หลาย key
+          var oldSchool = raw['โรงเรียนเดิม']||raw['เดิม']||raw['ชื่อโรงเรียนเดิม']||raw['โรงเรียนที่จบ']||s.currentSchool||'';
+          var row = {
+            'ห้อง': label,
+            'ลำดับ': s.order||idx+1,
+            'เลขประจำตัวนักเรียน': s.studentId||'',
+            'ชื่อ-สกุล': s.fullName||'',
+            'ชื่อเล่น': s.nickname||'',
+            'เพศ': s.gender||'',
+            'วันเกิด': birthDate,
+            'โทรนักเรียน': s.phone||raw['โทรนักเรียน']||'',
+            'ชื่อผู้ปกครอง': raw['ชื่อผู้ปกครอง']||'',
+            'โทรผู้ปกครอง': raw['โทรมือถือผู้ปกครอง']||raw['โทรบ้านผู้ปกครอง']||'',
+            'หมู่บ้านนักเรียน': raw['หมู่บ้านนักเรียน']||s.currentVillage||'',
+            'โรงเรียนเดิม': oldSchool,
+          };
+          // รวม raw ทั้งหมดที่เหลือ
+          Object.keys(raw).forEach(function(k){
+            if(!(k in row)) row[k] = raw[k];
+          });
+          summaryRows.push(row);
+          return row;
+        });
+
+        if(rows.length){
+          var ws = XLSX.utils.json_to_sheet(rows);
+          // ปรับความกว้างคอลัมน์อัตโนมัติ
+          var cols = Object.keys(rows[0]).map(function(k){
+            var max = k.length;
+            rows.forEach(function(r){ max = Math.max(max, String(r[k]||'').length); });
+            return {wch: Math.min(max+2, 40)};
+          });
+          ws['!cols'] = cols;
+          XLSX.utils.book_append_sheet(wb, ws, label);
+        } else {
+          // sheet ว่าง — ยังสร้างไว้ให้รู้ว่าห้องนี้ไม่มีข้อมูล
+          var wsEmpty = XLSX.utils.aoa_to_sheet([['ไม่มีข้อมูลนักเรียน']]);
+          XLSX.utils.book_append_sheet(wb, wsEmpty, label);
+        }
+      }
+
+      // Sheet สรุปรวมทุกห้อง (sheet แรก)
+      if(summaryRows.length){
+        var wsSummary = XLSX.utils.json_to_sheet(summaryRows);
+        var colsSummary = Object.keys(summaryRows[0]).map(function(k){
+          var max = k.length;
+          summaryRows.forEach(function(r){ max = Math.max(max, String(r[k]||'').length); });
+          return {wch: Math.min(max+2, 40)};
+        });
+        wsSummary['!cols'] = colsSummary;
+        // แทรก sheet นี้เป็นอันแรก
+        wb.SheetNames.unshift('รวมทุกห้อง');
+        wb.Sheets['รวมทุกห้อง'] = wsSummary;
+      }
+
+      var fname = 'นักเรียนทั้งระบบ_ปี'+curYear+'_'+new Date().toISOString().slice(0,10)+'.xlsx';
+      XLSX.writeFile(wb, fname);
+      window.showLoading(false);
+      window.showToast('ส่งออกสำเร็จ '+summaryRows.length+' คน ('+targets.length+' ห้อง)','success');
+    }catch(e){
+      window.showLoading(false);
+      console.error(e);
+      window.showToast('Export ผิดพลาด: '+e.message,'error');
+    }
   };
 
   window.restoreAll = function(){
