@@ -85,6 +85,8 @@ html.public-form, html.public-form body{background:linear-gradient(135deg,#f0f9f
 .pf-grid-3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:.6rem}
 @media(max-width:520px){.pf-grid,.pf-grid-3{grid-template-columns:1fr}}
 .pf-hint{font-size:.82rem;color:#6b7280;margin-top:.2rem}
+.pf-row.pf-missing input,.pf-row.pf-missing select,.pf-row.pf-missing textarea{border-color:#f59e0b;background:#fffbeb;box-shadow:0 0 0 3px rgba(245,158,11,.12)}
+.pf-miss-badge{display:inline-block;margin-left:.4rem;background:#f59e0b;color:#fff;font-size:.68rem;font-weight:700;padding:.05rem .4rem;border-radius:999px;vertical-align:middle}
 .pf-submit{width:100%;background:linear-gradient(135deg,#4338ca,#7c3aed);color:#fff;border:none;padding:1rem;border-radius:14px;font-size:1.05rem;font-weight:600;font-family:'Kanit',sans-serif;cursor:pointer;box-shadow:0 8px 20px rgba(67,56,202,.3);margin-top:.5rem;transition:.2s}
 .pf-submit:active{transform:scale(.98)}
 .pf-submit:disabled{opacity:.6;cursor:not-allowed}
@@ -2115,9 +2117,19 @@ window.deleteStudent = async function(classId, studentDocId){
       '<button class="btn btn-warning" id="stPromote">🚀 เปิดเครื่องมือเลื่อนชั้น</button>'+
       '</div>'+
 
+      '<div class="set-section"><h4>📥 ดาวน์โหลดไฟล์ Template สำหรับ Import</h4>'+
+      '<p class="muted">ดาวน์โหลดไฟล์ Excel เปล่าที่มีหัวคอลัมน์ครบตามรูปแบบ A (ใบมอบตัว) — กรอกข้อมูลนักเรียนลงในไฟล์ แล้วนำไป Import ผ่านเมนู "นำเข้ารายชื่อ" ได้ทันที (มีตัวอย่าง 1 แถวให้ดูเป็นแนวทาง)</p>'+
+      '<button class="btn" id="stImportTpl">📥 ดาวน์โหลด Template Import (.xlsx)</button>'+
+      '</div>'+
+
       '<div class="set-section"><h4>📝 ลิงก์ฟอร์มกรอกข้อมูลนักเรียน</h4>'+
       '<p class="muted">สำหรับนักเรียนชั้นอื่นที่ครูยังไม่มีข้อมูล Excel — สร้างลิงก์/QR Code แยกตามชั้น เพื่อให้นักเรียนกรอกข้อมูลเข้าระบบเอง</p>'+
       '<button class="btn btn-primary" id="stPublicForm">🔗 จัดการลิงก์ฟอร์ม + QR Code</button>'+
+      '</div>'+
+
+      '<div class="set-section"><h4>🧩 QR Code กรอกฟอร์มเฉพาะข้อมูลที่ยังขาด</h4>'+
+      '<p class="muted">เลือกห้องที่มีนักเรียนอยู่แล้วในระบบ — ระบบจะสร้างเอกสาร QR Code <strong>1 คน ต่อ 1 QR</strong> (ผูกกับเลขบัตรประชาชน) เมื่อนักเรียนสแกนจะเห็นข้อมูลเดิมของตนและกรอกเฉพาะช่องที่ยังว่างหรือระบุว่า "ไม่ทราบ" เพื่อเติมเข้าข้อมูลที่มีอยู่</p>'+
+      '<button class="btn btn-primary" id="stMissingQr" style="background:linear-gradient(135deg,#0891b2,#7c3aed)">🧩 สร้าง QR เติมข้อมูลที่ยังขาด</button>'+
       '</div>'+
 
       '<div class="set-section"><h4>🔧 ซ่อมข้อมูลบ้านเลขที่ที่ Excel แปลงเป็นวันที่</h4>'+
@@ -2178,6 +2190,8 @@ window.deleteStudent = async function(classId, studentDocId){
     };
     bd.querySelector('#stPromote').onclick = function(){ close(); window.openPromotionTool(); };
     bd.querySelector('#stPublicForm').onclick = function(){ close(); window.openPublicFormManager(); };
+    bd.querySelector('#stImportTpl').onclick = function(){ close(); window.exportImportTemplate(); };
+    bd.querySelector('#stMissingQr').onclick = function(){ close(); window.openMissingDataQrManager(); };
     bd.querySelector('#stFixDates').onclick = function(){ close(); window.fixDateCorruptedHouseNos(); };
     bd.querySelector('#stVillageDl').onclick = function(){ close(); window.exportVillageTemplate(); };
     bd.querySelector('#stVillageUp').onclick = function(){ close(); window.importVillageData(); };
@@ -2285,6 +2299,66 @@ window.deleteStudent = async function(classId, studentDocId){
       console.error(e);
       window.showLoading(false);
       window.showToast('ส่งออกผิดพลาด: '+e.message,'error');
+    }
+  };
+
+  // ═══════════════ Import Template (blank, Format A schema) ═══════════════
+  // ดาวน์โหลดไฟล์ Excel เปล่าที่มีหัวคอลัมน์ครบตามรูปแบบ A — กรอกแล้ว Import ได้ทันที
+  window.exportImportTemplate = function(){
+    if(typeof XLSX === 'undefined'){ window.showToast('SheetJS ยังโหลดไม่เสร็จ ลองใหม่อีกครั้ง','error'); return; }
+    try{
+      window.showLoading(true,'กำลังเตรียม Template...');
+      // หัวคอลัมน์ตามรูปแบบ A (ใบมอบตัว) — 3 คอลัมน์แรกเป็นคอลัมน์บังคับสำหรับการ detect
+      var headers = [
+        'ชั้น/ห้อง','เลขประจำตัวนักเรียน','ชื่อ-สกุลนักเรียน','ชื่อเล่น',
+        'เลขบัตรนักเรียน','วันเกิด(วัน)','วันเกิด(เดือน)','วันเกิด(ปีพ.ศ.)','อายุ',
+        'น้ำหนัก(กก.)','ส่วนสูง(ซม.)','หมู่เลือด','สัญชาตินักเรียน','เชื้อชาตินักเรียน',
+        'ศาสนานักเรียน','โรคประจำตัว','โรงเรียนเดิม',
+        'บ้านเลขที่นักเรียน','หมู่นักเรียน','หมู่บ้านนักเรียน','ตำบลนักเรียน','อำเภอนักเรียน','จังหวัดนักเรียน','รหัสไปรษณีย์นักเรียน','โทรนักเรียน',
+        'ชื่อ-สกุลบิดา','อาชีพบิดา','โทรบิดา','สถานะบิดา','รายได้บิดา',
+        'ชื่อ-สกุลมารดา','อาชีพมารดา','โทรมารดา','สถานะมารดา','รายได้มารดา','สถานภาพบิดา-มารดา',
+        'ชื่อผู้ปกครอง','ความสัมพันธ์ผู้ปกครอง','อาชีพผู้ปกครอง','โทรบ้านผู้ปกครอง','โทรมือถือผู้ปกครอง','รายได้ผู้ปกครอง',
+        'การเดินทาง','ระยะทาง(กม.)'
+      ];
+      var year = window.AppState.settings.currentAcademicYear || '';
+      // แถวตัวอย่าง 1 แถว (ลบทิ้งได้) เพื่อให้ครูเห็นรูปแบบการกรอก
+      var sample = {
+        'ชั้น/ห้อง':'ม.1/1','เลขประจำตัวนักเรียน':'10001','ชื่อ-สกุลนักเรียน':'เด็กชายตัวอย่าง ใจดี','ชื่อเล่น':'ตัวอย่าง',
+        'เลขบัตรนักเรียน':'1234567890123','วันเกิด(วัน)':'1','วันเกิด(เดือน)':'มกราคม','วันเกิด(ปีพ.ศ.)':'2555','อายุ':'12',
+        'น้ำหนัก(กก.)':'40','ส่วนสูง(ซม.)':'150','หมู่เลือด':'O','สัญชาตินักเรียน':'ไทย','เชื้อชาตินักเรียน':'ไทย',
+        'ศาสนานักเรียน':'พุทธ','โรคประจำตัว':'ไม่มี','โรงเรียนเดิม':'บ้านตัวอย่าง',
+        'บ้านเลขที่นักเรียน':'99','หมู่นักเรียน':'5','หมู่บ้านนักเรียน':'บ้านหนองดุม','ตำบลนักเรียน':'ในเมือง','อำเภอนักเรียน':'เมือง','จังหวัดนักเรียน':'บุรีรัมย์','รหัสไปรษณีย์นักเรียน':'31000','โทรนักเรียน':'0800000000',
+        'ชื่อ-สกุลบิดา':'นายพ่อ ใจดี','อาชีพบิดา':'เกษตรกร','โทรบิดา':'0810000000','สถานะบิดา':'มีชีวิต','รายได้บิดา':'50000',
+        'ชื่อ-สกุลมารดา':'นางแม่ ใจดี','อาชีพมารดา':'ค้าขาย','โทรมารดา':'0820000000','สถานะมารดา':'มีชีวิต','รายได้มารดา':'50000','สถานภาพบิดา-มารดา':'อยู่ด้วยกัน',
+        'ชื่อผู้ปกครอง':'นางแม่ ใจดี','ความสัมพันธ์ผู้ปกครอง':'มารดา','อาชีพผู้ปกครอง':'ค้าขาย','โทรบ้านผู้ปกครอง':'','โทรมือถือผู้ปกครอง':'0820000000','รายได้ผู้ปกครอง':'50000',
+        'การเดินทาง':'รถจักรยานยนต์','ระยะทาง(กม.)':'3'
+      };
+      // สร้างแถวว่างที่มีทุกคอลัมน์ + แถวตัวอย่าง
+      var blank = {}; headers.forEach(function(h){ blank[h] = ''; });
+      var rows = [ Object.assign({}, blank, sample) ];
+
+      var wb = XLSX.utils.book_new();
+      var ws = XLSX.utils.json_to_sheet(rows, {header:headers});
+      // บังคับคอลัมน์ที่เป็นเลขยาว (เลขประจำตัว/เลขบัตร/โทร/ไปรษณีย์) ให้เป็น text กันค่าเพี้ยน
+      var textCols = ['เลขประจำตัวนักเรียน','เลขบัตรนักเรียน','โทรนักเรียน','โทรบิดา','โทรมารดา','โทรบ้านผู้ปกครอง','โทรมือถือผู้ปกครอง','รหัสไปรษณีย์นักเรียน'];
+      var range = XLSX.utils.decode_range(ws['!ref']);
+      for(var C=range.s.c; C<=range.e.c; C++){
+        if(textCols.indexOf(headers[C])<0) continue;
+        for(var R=range.s.r+1; R<=range.e.r; R++){
+          var addr = XLSX.utils.encode_cell({c:C, r:R});
+          if(ws[addr]){ ws[addr].t='s'; ws[addr].v=String(ws[addr].v); }
+        }
+      }
+      ws['!cols'] = headers.map(function(h){ return {wch: Math.max(12, Math.min(h.length+4, 26))}; });
+      XLSX.utils.book_append_sheet(wb, ws, 'Template');
+      var fname = 'Template_Import_นักเรียน'+(year?('_'+year):'')+'.xlsx';
+      XLSX.writeFile(wb, fname);
+      window.showLoading(false);
+      window.showToast('ดาวน์โหลด Template Import เรียบร้อย — กรอกข้อมูลแล้วนำเข้าผ่านเมนู "นำเข้ารายชื่อ"','success',5000);
+    }catch(e){
+      console.error(e);
+      window.showLoading(false);
+      window.showToast('สร้าง Template ผิดพลาด: '+e.message,'error');
     }
   };
 
@@ -2831,6 +2905,210 @@ window.deleteStudent = async function(classId, studentDocId){
 
     render();
   };
+
+  // ═══════════════ Missing-data QR (เติมเฉพาะข้อมูลที่ยังขาด, 1 คน/1 QR) ═══════════════
+  window.openMissingDataQrManager = function(){
+    var st = window.AppState.settings || {};
+    var year = st.currentAcademicYear;
+    var grade = 'm1';
+    var room = '';
+
+    var bd = document.createElement('div'); bd.className='modal-bd show';
+    document.body.appendChild(bd);
+    function close(){ bd.classList.remove('show'); setTimeout(function(){bd.remove();},220); }
+
+    function render(){
+      var info = window.GRADE_INFO[grade];
+      var clsLbl = window.classLabel(info.num, room);
+      bd.innerHTML = '<div class="modal modal-lg" style="max-width:600px">'+
+        '<div class="modal-head"><h3>🧩 QR เติมข้อมูลที่ยังขาด</h3>'+
+        '<button class="modal-close" id="mqClose">×</button></div>'+
+        '<div class="modal-body">'+
+          '<p class="muted" style="margin-top:0">เลือกห้องที่มีนักเรียนอยู่แล้วในระบบ — ระบบจะสร้างเอกสาร QR Code <strong>1 คน ต่อ 1 QR</strong> (ผูกกับเลขบัตรประชาชน) เรียงตามรายชื่อในระบบ นักเรียนสแกนแล้วกรอกเฉพาะช่องที่ยังว่างหรือเขียนว่า "ไม่ทราบ"</p>'+
+
+          '<div class="form-row"><label>ระดับชั้น</label>'+
+            '<select id="mqGrade">'+
+              ['m1','m2','m3','m4','m5','m6'].map(function(g){
+                return '<option value="'+g+'" '+(g===grade?'selected':'')+'>ม.'+window.GRADE_INFO[g].num+'</option>';
+              }).join('')+
+            '</select></div>'+
+
+          '<div class="form-row"><label>ห้อง <span style="color:#9ca3af;font-weight:400;font-size:.85em">(ปล่อยว่างถ้าโรงเรียนมีห้องเดียว)</span></label>'+
+            '<input type="text" id="mqRoom" value="'+window.escHTML(room)+'" placeholder="เช่น 1, 2 หรือเว้นว่าง"></div>'+
+
+          '<div class="form-row"><label>ปีการศึกษา</label>'+
+            '<input type="number" id="mqYear" value="'+year+'" min="2400" max="2700"></div>'+
+
+          '<div style="background:#f0f9ff;border:1px solid #bae6fd;border-radius:12px;padding:14px;margin-top:6px">'+
+            '<div style="font-weight:600;color:#0369a1;margin-bottom:6px">🎯 ห้องเป้าหมาย: '+clsLbl+' ปี '+year+'</div>'+
+            '<div style="font-size:.88em;color:#0c4a6e">กดปุ่มด้านล่างเพื่อสร้างเอกสาร QR (เปิดในแท็บใหม่ พร้อมพิมพ์)</div>'+
+          '</div>'+
+
+          '<div style="background:#fef3c7;border:1px solid #fde68a;border-radius:10px;padding:10px 12px;margin-top:14px;font-size:.85em;line-height:1.6;color:#92400e">'+
+            '⚠️ <strong>ความเป็นส่วนตัว:</strong> QR แต่ละอันมีเลขบัตรประชาชนฝังอยู่ในลิงก์ — โปรดแจกให้นักเรียนเจ้าของข้อมูลเป็นรายบุคคล ไม่ติดประกาศรวม'+
+          '</div>'+
+        '</div>'+
+        '<div class="modal-foot">'+
+          '<button class="btn" id="mqCancel">ปิด</button>'+
+          '<button class="btn btn-primary" id="mqGen" style="background:linear-gradient(135deg,#0891b2,#7c3aed)">🖨️ สร้างเอกสาร QR (1 คน/1 QR)</button>'+
+        '</div></div>';
+
+      bd.querySelector('#mqClose').onclick = close;
+      bd.querySelector('#mqCancel').onclick = close;
+      bd.querySelector('#mqGrade').onchange = function(e){ grade = e.target.value; render(); };
+      bd.querySelector('#mqRoom').oninput = function(e){ room = e.target.value.trim(); render(); };
+      bd.querySelector('#mqYear').onchange = function(e){
+        var y = parseInt(e.target.value,10);
+        if(y>=2400 && y<=2700){ year = y; render(); }
+      };
+      bd.querySelector('#mqGen').onclick = function(){
+        openMissingDataQrDoc(year, grade, room);
+      };
+    }
+
+    render();
+  };
+
+  async function openMissingDataQrDoc(year, grade, room){
+    var st = window.AppState.settings || {};
+    var schoolName = st.schoolName || 'โรงเรียนกระดุมทองวิทยา';
+    var logo = st.schoolLogo || 'https://nonthaphathr.github.io/uploadimg/logorecruit2026.png';
+    var info = window.GRADE_INFO[grade];
+    var clsLbl = window.classLabel(info.num, room);
+    var baseUrl = location.origin + location.pathname + location.search;
+    var checks = window.PF_MISSING_CHECK || [];
+    var isMissing = window.PF_isMissing || function(v){ var s=(v==null?'':String(v).trim()); return !s || s.indexOf('ไม่ทราบ')>=0; };
+
+    try{
+      window.showLoading(true,'กำลังโหลดรายชื่อ...');
+      var classId = window.classroomId(year, grade, room);
+      var students = await window.getStudentsOfClass(classId, true);
+      window.showLoading(false);
+      if(!students.length){ window.showToast('ห้อง '+clsLbl+' ปี '+year+' ยังไม่มีนักเรียนในระบบ','warning'); return; }
+
+      // เรียงตามรายชื่อที่มีอยู่ในระบบ (order เดิม → ตาม studentId)
+      students = students.slice().sort(function(a,b){
+        var oa=Number(a.order)||9999, ob=Number(b.order)||9999;
+        if(oa!==ob) return oa-ob;
+        return String(a.studentId||'').localeCompare(String(b.studentId||''),'th',{numeric:true});
+      });
+
+      var cells = students.map(function(s){
+        var raw = s.raw || {};
+        var nid = String(raw['เลขบัตรนักเรียน']||'').replace(/[^0-9]/g,'');
+        var sid = String(s.studentId||'').trim();
+        // คำนวณรายการที่ยังขาด
+        var missingLabels = [];
+        checks.forEach(function(ck){
+          var anyMissing = ck.keys.some(function(k){ return isMissing(raw[k]); });
+          if(anyMissing) missingLabels.push(ck.label);
+        });
+        var missCount = missingLabels.length;
+
+        // สร้างลิงก์ (ผูกกับเลขบัตรประชาชนก่อน, ถ้าไม่มีใช้เลขประจำตัว)
+        var canBind = !!(nid || sid);
+        var p = ['mode=fill', 'grade='+grade, 'year='+year];
+        if(room) p.push('room='+encodeURIComponent(room));
+        if(nid) p.push('nid='+encodeURIComponent(nid));
+        else if(sid) p.push('sid='+encodeURIComponent(sid));
+        var formUrl = baseUrl + '#form?' + p.join('&');
+        var qr = canBind ? ('https://api.qrserver.com/v1/create-qr-code/?size=300x300&margin=8&data=' + encodeURIComponent(formUrl)) : '';
+
+        var missHtml;
+        if(missCount===0){
+          missHtml = '<div class="mq-complete">✅ ข้อมูลครบถ้วน</div>';
+        } else {
+          var shown = missingLabels.slice(0,8).join(' · ') + (missingLabels.length>8?(' · +'+(missingLabels.length-8)+' รายการ'):'');
+          missHtml = '<div class="mq-missing"><span class="mq-missing-h">ยังขาด '+missCount+' รายการ:</span> '+window.escHTML(shown)+'</div>';
+        }
+
+        return '<div class="mq-card'+(missCount===0?' done':'')+'">'+
+            '<div class="mq-info">'+
+              '<div class="mq-name">'+window.escHTML(s.fullName||'(ไม่มีชื่อ)')+'</div>'+
+              '<div class="mq-sub">เลขประจำตัว '+window.escHTML(sid||'—')+(s.order?(' &nbsp;•&nbsp; ลำดับที่ '+s.order):'')+'</div>'+
+              missHtml+
+            '</div>'+
+            '<div class="mq-qrbox">'+
+              (canBind
+                ? '<img class="mq-qr" src="'+qr+'" alt="QR" crossorigin="anonymous"><div class="mq-scan">สแกนเพื่อเติมข้อมูล</div>'
+                : '<div class="mq-noqr">⚠️ ผูก QR ไม่ได้<br><small>ไม่มีเลขบัตร/เลขประจำตัว</small></div>')+
+            '</div>'+
+          '</div>';
+      }).join('');
+
+      var totalMissing = students.filter(function(s){
+        var raw=s.raw||{};
+        return checks.some(function(ck){ return ck.keys.some(function(k){ return isMissing(raw[k]); }); });
+      }).length;
+
+      var html = '<!DOCTYPE html><html lang="th"><head><meta charset="UTF-8">'+
+        '<title>QR เติมข้อมูล — '+window.escHTML(clsLbl)+' — '+window.escHTML(schoolName)+'</title>'+
+        '<link rel="preconnect" href="https://fonts.googleapis.com">'+
+        '<link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@400;500;600;700&family=Kanit:wght@500;600;700;800&display=swap" rel="stylesheet">'+
+        '<style>'+
+          '@page{size:A4 portrait;margin:1.2cm}'+
+          '*{box-sizing:border-box;margin:0;padding:0}'+
+          'body{font-family:"Sarabun",sans-serif;color:#1f2937;background:#e5e7eb}'+
+          '.toolbar{position:sticky;top:0;background:#1f2937;color:#fff;padding:10px 16px;display:flex;gap:10px;align-items:center;z-index:100}'+
+          '.toolbar h2{margin:0;font-family:"Kanit",sans-serif;font-size:13pt;flex:1}'+
+          '.toolbar button{background:#10b981;color:#fff;border:none;padding:8px 16px;border-radius:8px;cursor:pointer;font-family:"Kanit",sans-serif;font-size:12pt}'+
+          '.toolbar button.cl{background:#6b7280}'+
+          '.page{background:#fff;width:210mm;min-height:297mm;padding:1.2cm;margin:6mm auto;box-shadow:0 4px 14px rgba(0,0,0,.1)}'+
+          '.doc-head{display:flex;align-items:center;gap:14px;padding-bottom:10px;border-bottom:3px double #0891b2;margin-bottom:12px}'+
+          '.doc-head img{width:56px;height:56px;border-radius:50%;object-fit:contain;background:#fff;padding:4px;border:1.5px solid #e5e7eb;flex-shrink:0}'+
+          '.doc-head h1{font-family:"Kanit",sans-serif;font-size:16pt;margin:0;color:#0e7490}'+
+          '.doc-head .school{font-size:12pt;color:#374151;margin-top:2px}'+
+          '.doc-head .dev{font-size:9pt;color:#6b7280;margin-top:3px}'+
+          '.doc-intro{background:#ecfeff;border-left:4px solid #0891b2;padding:8px 12px;margin-bottom:14px;font-size:10.5pt;line-height:1.6;color:#0c4a6e;border-radius:4px}'+
+          '.mq-grid{display:grid;grid-template-columns:1fr 1fr;gap:6mm}'+
+          '.mq-card{border:1.5px solid #e5e7eb;border-radius:10px;padding:5mm;display:flex;gap:4mm;align-items:center;background:#fafafa;break-inside:avoid;page-break-inside:avoid}'+
+          '.mq-card.done{background:#f0fdf4;border-color:#bbf7d0}'+
+          '.mq-info{flex:1;min-width:0}'+
+          '.mq-name{font-family:"Kanit",sans-serif;font-size:12pt;font-weight:600;color:#1f2937;line-height:1.3}'+
+          '.mq-sub{font-size:9pt;color:#6b7280;margin:2px 0 5px}'+
+          '.mq-missing{font-size:8.5pt;color:#92400e;background:#fffbeb;border:1px solid #fde68a;border-radius:6px;padding:4px 6px;line-height:1.5}'+
+          '.mq-missing-h{font-weight:700;color:#b45309;display:block}'+
+          '.mq-complete{font-size:9.5pt;color:#15803d;font-weight:600}'+
+          '.mq-qrbox{width:34mm;flex-shrink:0;text-align:center}'+
+          '.mq-qr{width:34mm;height:34mm;background:#fff}'+
+          '.mq-scan{font-size:7.5pt;color:#6b7280;margin-top:2px}'+
+          '.mq-noqr{font-size:8pt;color:#b91c1c;border:1px dashed #fca5a5;border-radius:6px;padding:6px}'+
+          '.doc-foot{margin-top:14px;padding-top:8px;border-top:1px solid #e5e7eb;text-align:center;font-size:9pt;color:#6b7280;line-height:1.6}'+
+          '@media print{body{background:#fff}.toolbar{display:none}.page{box-shadow:none;margin:0;width:auto}}'+
+        '</style></head><body>'+
+        '<div class="toolbar">'+
+          '<h2>🧩 QR เติมข้อมูล — '+window.escHTML(clsLbl)+'</h2>'+
+          '<button onclick="window.print()">🖨️ พิมพ์</button>'+
+          '<button class="cl" onclick="window.close()">← ปิด</button>'+
+        '</div>'+
+        '<div class="page">'+
+          '<div class="doc-head">'+
+            '<img src="'+window.escHTML(logo)+'" alt="" onerror="this.style.display=\'none\'">'+
+            '<div style="flex:1">'+
+              '<h1>QR Code เติมข้อมูลที่ยังขาด — '+window.escHTML(clsLbl)+'</h1>'+
+              '<div class="school">'+window.escHTML(schoolName)+' &nbsp;•&nbsp; ปีการศึกษา '+year+'</div>'+
+              '<div class="dev">พัฒนาโดย ครูนนทพัทธ์ หิรัญเรือง — งานทะเบียนและเทียบโอนผลการเรียน กลุ่มบริหารงานวิชาการ</div>'+
+            '</div>'+
+          '</div>'+
+          '<div class="doc-intro">'+
+            '<strong>คำอธิบาย:</strong> นักเรียนแต่ละคนสแกน QR Code ของตนเอง (ผูกกับเลขบัตรประชาชน) เพื่อเข้าสู่แบบฟอร์มที่แสดงข้อมูลเดิม '+
+            'แล้วกรอกเฉพาะช่องที่ยังว่างหรือระบุว่า "ไม่ทราบ" ข้อมูลจะถูกเติมเข้าระเบียนเดิมโดยไม่สร้างซ้ำ &nbsp;'+
+            '(ทั้งหมด '+students.length+' คน — ยังมีข้อมูลไม่ครบ '+totalMissing+' คน)'+
+          '</div>'+
+          '<div class="mq-grid">'+cells+'</div>'+
+          '<div class="doc-foot"><strong>'+window.escHTML(schoolName)+'</strong> — ระบบสารสนเทศประจำชั้นเรียน</div>'+
+        '</div>'+
+        '</body></html>';
+
+      var w = window.open('', '_blank');
+      if(!w){ window.showToast('โปรดอนุญาต Pop-up เพื่อเปิดเอกสาร','warning'); return; }
+      w.document.open(); w.document.write(html); w.document.close();
+    }catch(e){
+      window.showLoading(false);
+      console.error(e);
+      window.showToast('สร้างเอกสารผิดพลาด: '+e.message,'error');
+    }
+  }
 
   // ═══════════════ Backup / Restore ═══════════════
   window.backupAll = async function(){
@@ -3494,11 +3772,13 @@ window.deleteStudent = async function(classId, studentDocId){
         '</div>'+
         '<div style="flex:1;min-width:200px">'+
           '<div class="dgrid">'+
+            field('เลขประจำตัวนักเรียน', s.studentId||'', 'studentId')+
             field('ชื่อเล่น', s.nickname||raw['ชื่อเล่น']||'', 'nickname')+
             field('เพศ', s.gender||'', null)+
             field('โทร', s.phone||raw['โทรนักเรียน']||'', 'phone')+
             field('ลำดับในห้อง', String(s.order||''), null)+
           '</div>'+
+          '<div class="hint" style="margin-top:.3rem">⚠️ การแก้ไขเลขประจำตัวจะย้ายรหัสเอกสารในฐานข้อมูลให้อัตโนมัติ — ห้ามซ้ำกับนักเรียนคนอื่นในห้อง</div>'+
         '</div>'+
       '</div>'+
       '<div class="dtab-row">'+
@@ -3688,16 +3968,56 @@ window.deleteStudent = async function(classId, studentDocId){
       if(rawPatch['ชื่อ-สกุลนักเรียน'] && rawPatch['ชื่อ-สกุลนักเรียน']!==raw['ชื่อ-สกุลนักเรียน']){
         patch.fullName = rawPatch['ชื่อ-สกุลนักเรียน'];
       }
+
+      // ── จัดการการแก้ไขเลขประจำตัวนักเรียน (เปลี่ยน document ID) ──
+      var newSid = (patch.studentId!=null) ? String(patch.studentId).trim() : String(s.studentId||'').trim();
+      var oldSid = String(s.studentId||'').trim();
+      var sidChanged = (newSid !== oldSid);
+      if(sidChanged){
+        // ตรวจซ้ำกับนักเรียนคนอื่นในห้อง
+        if(newSid){
+          var clash = TBL_STATE.all.find(function(x){
+            return x.id!==studentDocId && String(x.studentId||'').trim()===newSid;
+          });
+          if(clash){
+            window.showToast('เลขประจำตัว "'+newSid+'" ซ้ำกับ '+(clash.fullName||'นักเรียนคนอื่น')+' ในห้องนี้','error',5000);
+            return;
+          }
+        }
+        // ให้ค่า studentId กับ raw['เลขประจำตัวนักเรียน'] สอดคล้องกัน
+        rawPatch['เลขประจำตัวนักเรียน'] = newSid;
+      }
       patch.raw = rawPatch;
+      patch.studentId = newSid;
+
       try{
         window.showLoading(true,'กำลังบันทึก...');
-        await window.updateStudent(classId, studentDocId, patch);
-        var idx = TBL_STATE.all.findIndex(function(x){return x.id===studentDocId});
-        if(idx>=0) Object.assign(TBL_STATE.all[idx], patch);
-        applyTblFilter();
-        window.showLoading(false);
-        window.showToast('บันทึกการแก้ไขแล้ว','success');
-        close();
+        if(sidChanged){
+          // ต้องย้าย document ID → ใช้ bulkSaveStudents (delete+recreate ทั้งห้อง โดยอิง studentId)
+          var idxC = TBL_STATE.all.findIndex(function(x){return x.id===studentDocId});
+          if(idxC>=0) Object.assign(TBL_STATE.all[idxC], patch);
+          // ตัด field ที่ไม่ควรเขียนทับลง doc (id เป็นของ Firestore เอง)
+          var listForSave = TBL_STATE.all.map(function(x){
+            var c = Object.assign({}, x); delete c.id; return c;
+          });
+          await window.bulkSaveStudents(classId, listForSave);
+          window.AppState.studentsCache = {};
+          // โหลดใหม่จาก server เพื่อให้ id (doc id) ตรงกับของจริง
+          var fresh = await window.getStudentsOfClass(classId, true);
+          TBL_STATE.all = fresh;
+          applyTblFilter();
+          window.showLoading(false);
+          window.showToast('บันทึก + เปลี่ยนเลขประจำตัวเป็น "'+(newSid||'(ว่าง)')+'" แล้ว','success');
+          close();
+        } else {
+          await window.updateStudent(classId, studentDocId, patch);
+          var idx = TBL_STATE.all.findIndex(function(x){return x.id===studentDocId});
+          if(idx>=0) Object.assign(TBL_STATE.all[idx], patch);
+          applyTblFilter();
+          window.showLoading(false);
+          window.showToast('บันทึกการแก้ไขแล้ว','success');
+          close();
+        }
       }catch(e){ window.showLoading(false); window.showToast('บันทึกไม่สำเร็จ: '+e.message,'error'); }
     };
 
@@ -4415,6 +4735,79 @@ window.deleteStudent = async function(classId, studentDocId){
      ═══════════════════════════════════════════════════════════════ -->
 <script>
 (function(){
+  // ── ตัวช่วยตรวจ "ข้อมูลที่ยังขาด": ว่าง หรือมีคำว่า "ไม่ทราบ" ──
+  window.PF_isMissing = function(v){
+    var s = (v==null?'':String(v).trim());
+    return !s || s.indexOf('ไม่ทราบ')>=0;
+  };
+
+  // ── แผนผัง field ของฟอร์ม ↔ คีย์ raw (ใช้ทั้ง prefill และตรวจข้อมูลขาด) ──
+  // type: 'input' (ค่าธรรมดา) | 'select' | 'name' (ประกอบจาก prefix/first/last)
+  window.PF_FIELD_MAP = [
+    {id:'pfNickname', key:'ชื่อเล่น'},
+    {id:'pfStudentId', key:'เลขประจำตัวนักเรียน'},
+    {id:'pfNationalId', key:'เลขบัตรนักเรียน'},
+    {id:'pfBirthDay', key:'วันเกิด(วัน)'},
+    {id:'pfBirthMonth', key:'วันเกิด(เดือน)', type:'select'},
+    {id:'pfBirthYear', key:'วันเกิด(ปีพ.ศ.)'},
+    {id:'pfAge', key:'อายุ'},
+    {id:'pfWeight', key:'น้ำหนัก(กก.)'},
+    {id:'pfHeight', key:'ส่วนสูง(ซม.)'},
+    {id:'pfNationality', key:'สัญชาตินักเรียน'},
+    {id:'pfRace', key:'เชื้อชาตินักเรียน'},
+    {id:'pfReligion', key:'ศาสนานักเรียน'},
+    {id:'pfDisease', key:'โรคประจำตัว'},
+    {id:'pfOldSchool', key:'โรงเรียนเดิม'},
+    {id:'pfHouseNo', key:'บ้านเลขที่นักเรียน'},
+    {id:'pfMoo', key:'หมู่นักเรียน'},
+    {id:'pfVillage', key:'หมู่บ้านนักเรียน'},
+    {id:'pfSubdistrict', key:'ตำบลนักเรียน'},
+    {id:'pfDistrict', key:'อำเภอนักเรียน'},
+    {id:'pfProvince', key:'จังหวัดนักเรียน'},
+    {id:'pfPostal', key:'รหัสไปรษณีย์นักเรียน'},
+    {id:'pfStudentPhone', key:'โทรนักเรียน'},
+    {id:'pfFatherFirstName', key:'ชื่อบิดา'},
+    {id:'pfFatherLastName', key:'นามสกุลบิดา'},
+    {id:'pfFatherPrefix', key:'คำนำหน้าบิดา', type:'select'},
+    {id:'pfFatherJob', key:'อาชีพบิดา'},
+    {id:'pfFatherPhone', key:'โทรบิดา'},
+    {id:'pfFatherStatus', key:'สถานะบิดา', type:'select'},
+    {id:'pfFatherIncome', key:'รายได้บิดา'},
+    {id:'pfMotherFirstName', key:'ชื่อมารดา'},
+    {id:'pfMotherLastName', key:'นามสกุลมารดา'},
+    {id:'pfMotherPrefix', key:'คำนำหน้ามารดา', type:'select'},
+    {id:'pfMotherJob', key:'อาชีพมารดา'},
+    {id:'pfMotherPhone', key:'โทรมารดา'},
+    {id:'pfMotherStatus', key:'สถานะมารดา', type:'select'},
+    {id:'pfMotherIncome', key:'รายได้มารดา'},
+    {id:'pfParentStatus', key:'สถานภาพบิดา-มารดา', type:'select'},
+    {id:'pfGuardianPrefix', key:'คำนำหน้าผู้ปกครอง', type:'select'},
+    {id:'pfGuardianFirstName', key:'ชื่อจริงผู้ปกครอง'},
+    {id:'pfGuardianLastName', key:'นามสกุลผู้ปกครอง'},
+    {id:'pfGuardianRel', key:'ความสัมพันธ์ผู้ปกครอง', type:'select'},
+    {id:'pfGuardianPhone', key:'โทรมือถือผู้ปกครอง'},
+    {id:'pfGuardianJob', key:'อาชีพผู้ปกครอง'},
+    {id:'pfGuardianHomePhone', key:'โทรบ้านผู้ปกครอง'},
+    {id:'pfGuardianIncome', key:'รายได้ผู้ปกครอง'},
+    {id:'pfTravel', key:'การเดินทาง', type:'select'},
+    {id:'pfDistance', key:'ระยะทาง(กม.)'}
+  ];
+
+  // ── กลุ่มข้อมูลสำหรับสรุป "ยังขาด" บนเอกสาร QR (จัดกลุ่มให้อ่านง่าย) ──
+  window.PF_MISSING_CHECK = [
+    {label:'เลขบัตรประชาชน', keys:['เลขบัตรนักเรียน']},
+    {label:'วันเกิด', keys:['วันเกิด(วัน)','วันเกิด(เดือน)','วันเกิด(ปีพ.ศ.)']},
+    {label:'น้ำหนัก/ส่วนสูง', keys:['น้ำหนัก(กก.)','ส่วนสูง(ซม.)']},
+    {label:'โรคประจำตัว', keys:['โรคประจำตัว']},
+    {label:'โรงเรียนเดิม', keys:['โรงเรียนเดิม']},
+    {label:'ที่อยู่', keys:['บ้านเลขที่นักเรียน','หมู่บ้านนักเรียน','ตำบลนักเรียน','อำเภอนักเรียน','จังหวัดนักเรียน']},
+    {label:'เบอร์นักเรียน', keys:['โทรนักเรียน']},
+    {label:'ข้อมูลบิดา', keys:['ชื่อบิดา','อาชีพบิดา']},
+    {label:'ข้อมูลมารดา', keys:['ชื่อมารดา','อาชีพมารดา']},
+    {label:'ข้อมูลผู้ปกครอง', keys:['ชื่อจริงผู้ปกครอง','ความสัมพันธ์ผู้ปกครอง','โทรมือถือผู้ปกครอง']},
+    {label:'การเดินทาง', keys:['การเดินทาง','ระยะทาง(กม.)']}
+  ];
+
   // Parse hash params: #form?grade=m1&room=1&year=2569
   function parseHashParams(){
     var hash = location.hash || '';
@@ -4439,6 +4832,13 @@ window.deleteStudent = async function(classId, studentDocId){
     var room = params.room || '';
     var year = parseInt(params.year, 10) || st.currentAcademicYear;
     var clsLbl = window.classLabel(info.num, room);
+
+    // ── โหมดเติมข้อมูลที่ยังขาด (ผูกกับเลขบัตรประชาชน) ──
+    var fillMode = (params.mode === 'fill');
+    var fillNid = (params.nid || '').replace(/[^0-9]/g,'');
+    var fillSid = (params.sid || '').trim();
+    var fillClassId = window.classroomId(year, grade, room);
+    var fillStudent = null;
 
     var root = document.getElementById('publicForm');
     root.style.display = 'block';
@@ -4726,6 +5126,48 @@ window.deleteStudent = async function(classId, studentDocId){
           '_submittedAt': new Date().toISOString()
         };
 
+        // ════ โหมดเติมข้อมูล: รวมเข้าระเบียนเดิม (ไม่สร้างซ้ำ) ════
+        if(fillMode && fillStudent){
+          var existRaw = fillStudent.raw || {};
+          var merged = Object.assign({}, existRaw);
+          // เขียนทับเฉพาะค่าที่กรอกใหม่ (ไม่ว่าง) — คงค่าเดิมไว้ถ้าปล่อยว่าง
+          Object.keys(raw).forEach(function(k){
+            if(k==='_submittedViaForm' || k==='_submittedAt') return;
+            var nv = raw[k];
+            if(nv!=null && String(nv).trim()!=='') merged[k] = nv;
+          });
+          merged['ชื่อ-สกุลนักเรียน'] = fullName;
+          merged['_lastFilledViaForm'] = true;
+          merged['_lastFilledAt'] = new Date().toISOString();
+
+          var patchFill = {
+            fullName: fullName,
+            gender: gender,
+            nickname: merged['ชื่อเล่น'] || '',
+            phone: merged['โทรนักเรียน'] || guardianPhone || '',
+            raw: merged
+          };
+          // ถ้าเดิมยังไม่มีเลขประจำตัว แต่นักเรียนกรอกมา → อัปเดตค่าที่แสดง (รหัสเอกสารคงเดิม ครูปรับภายหลังได้)
+          if(merged['เลขประจำตัวนักเรียน'] && merged['เลขประจำตัวนักเรียน']!==fillStudent.studentId){
+            patchFill.studentId = merged['เลขประจำตัวนักเรียน'];
+          }
+
+          await window.updateStudent(fillClassId, fillStudent.id, patchFill);
+
+          root.innerHTML =
+            '<div class="pf-wrap">'+
+              '<div class="pf-success">'+
+                '<div class="pf-check">✅</div>'+
+                '<h2>บันทึกข้อมูลเรียบร้อยแล้ว</h2>'+
+                '<p style="color:#475569;margin:.5rem 0">ขอบคุณ <strong>'+window.escHTML(fullName)+'</strong></p>'+
+                '<p style="color:#6b7280;font-size:.9rem;margin-top:1rem">ข้อมูลที่กรอกถูกเติมเข้าระเบียนเดิมในระบบสารสนเทศประจำชั้นแล้ว</p>'+
+                '<button class="pf-submit" style="margin-top:1.5rem" onclick="location.reload()">แก้ไข/ดูอีกครั้ง</button>'+
+              '</div>'+
+            '</div>';
+          window.scrollTo({top:0, behavior:'smooth'});
+          return;
+        }
+
         var student = {
           studentId: raw['เลขประจำตัวนักเรียน'] || nationalId,
           fullName: fullName,
@@ -4789,6 +5231,109 @@ window.deleteStudent = async function(classId, studentDocId){
     }
 
     renderForm();
+
+    // ════ โหมดเติมข้อมูล: โหลดนักเรียน → prefill → ไฮไลต์ช่องที่ยังขาด ════
+    function fillSetVal(id, val){
+      var el = document.getElementById(id);
+      if(!el) return;
+      el.value = (val==null?'':String(val));
+    }
+    function fillMark(id){
+      var el = document.getElementById(id);
+      if(!el || !el.closest) return;
+      var row = el.closest('.pf-row');
+      if(!row || row.classList.contains('pf-missing')) return;
+      row.classList.add('pf-missing');
+      var lbl = row.querySelector('label');
+      if(lbl && !lbl.querySelector('.pf-miss-badge')){
+        var b = document.createElement('span');
+        b.className = 'pf-miss-badge'; b.textContent = 'ต้องกรอก';
+        lbl.appendChild(b);
+      }
+    }
+    function deriveName(praw, combinedKey, prefixKey, firstKey, lastKey, prefixList){
+      if(praw[firstKey] && String(praw[firstKey]).trim()) return;
+      var c = String(praw[combinedKey]||'').trim();
+      if(!c) return;
+      var pfx='', rest=c;
+      for(var i=0;i<prefixList.length;i++){ if(c.indexOf(prefixList[i])===0){ pfx=prefixList[i]; rest=c.slice(prefixList[i].length); break; } }
+      rest = rest.trim();
+      var sp = rest.indexOf(' ');
+      if(!praw[prefixKey]) praw[prefixKey] = pfx;
+      praw[firstKey] = sp>=0 ? rest.slice(0,sp) : rest;
+      praw[lastKey] = sp>=0 ? rest.slice(sp+1).trim() : '';
+    }
+    function prefillStudent(s){
+      var orig = s.raw || {};
+      var praw = Object.assign({}, orig); // สำเนาสำหรับแสดงผล (ไม่กระทบ baseline ตอน merge)
+      // เติมชื่อย่อย จากชื่อรวม ถ้ายังไม่มี
+      deriveName(praw,'ชื่อ-สกุลบิดา','คำนำหน้าบิดา','ชื่อบิดา','นามสกุลบิดา',['นาย','ดร.','ผศ.','รศ.','ศ.']);
+      deriveName(praw,'ชื่อ-สกุลมารดา','คำนำหน้ามารดา','ชื่อมารดา','นามสกุลมารดา',['นางสาว','นาง','ดร.','ผศ.','รศ.','ศ.']);
+      deriveName(praw,'ชื่อผู้ปกครอง','คำนำหน้าผู้ปกครอง','ชื่อจริงผู้ปกครอง','นามสกุลผู้ปกครอง',['นาย','นางสาว','นาง','ดร.','ผศ.','รศ.','ศ.']);
+
+      // ชื่อนักเรียน → คำนำหน้า/ชื่อ/สกุล
+      var fn = s.fullName || praw['ชื่อ-สกุลนักเรียน'] || '';
+      var sp_ = ['เด็กชาย','เด็กหญิง','นางสาว','นาย','นาง'];
+      var pfx='', rest=fn;
+      for(var i=0;i<sp_.length;i++){ if(fn.indexOf(sp_[i])===0){ pfx=sp_[i]; rest=fn.slice(sp_[i].length); break; } }
+      rest = rest.trim();
+      var spi = rest.indexOf(' ');
+      fillSetVal('pfPrefix', pfx);
+      fillSetVal('pfFirstName', spi>=0?rest.slice(0,spi):rest);
+      fillSetVal('pfLastName', spi>=0?rest.slice(spi+1).trim():'');
+
+      // เติมค่าจาก map (เฉพาะที่มีค่า)
+      (window.PF_FIELD_MAP||[]).forEach(function(f){
+        var v = praw[f.key];
+        if(v!=null && String(v).trim()!=='') fillSetVal(f.id, v);
+      });
+      // ไฮไลต์ช่องที่ยังขาด (ใช้ค่าจริงจากระบบ)
+      (window.PF_FIELD_MAP||[]).forEach(function(f){
+        if(window.PF_isMissing(praw[f.key])) fillMark(f.id);
+      });
+    }
+
+    if(fillMode){
+      (async function(){
+        var sbtn = document.getElementById('pfSubmit');
+        if(sbtn){ sbtn.disabled=true; sbtn.textContent='กำลังโหลดข้อมูล...'; }
+        try{
+          var list = await window.getStudentsOfClass(fillClassId, true);
+          var found = null;
+          if(fillNid){
+            found = list.find(function(x){
+              return String((x.raw&&x.raw['เลขบัตรนักเรียน'])||'').replace(/[^0-9]/g,'')===fillNid;
+            });
+          }
+          if(!found && fillSid){
+            found = list.find(function(x){ return String(x.studentId||'').trim()===fillSid; });
+          }
+          if(!found){
+            root.innerHTML = '<div class="pf-wrap"><div class="pf-card" style="text-align:center;border-top:6px solid #dc2626">'+
+              '<h2 style="color:#b91c1c">ไม่พบข้อมูลนักเรียน</h2>'+
+              '<p style="color:#475569;line-height:1.7">ไม่พบระเบียนที่ตรงกับ QR นี้ในห้อง <strong>'+window.escHTML(clsLbl)+'</strong> ปีการศึกษา '+year+'<br>กรุณาติดต่อครูที่ปรึกษา</p>'+
+              '</div></div>';
+            return;
+          }
+          fillStudent = found;
+          // แบนเนอร์ระบุตัวตน
+          var head = root.querySelector('.pf-head');
+          if(head && head.parentNode){
+            var banner = document.createElement('div');
+            banner.style.cssText = 'background:linear-gradient(135deg,#ecfeff,#ede9fe);border:1px solid #a5b4fc;border-radius:14px;padding:12px 14px;margin-bottom:1rem;color:#3730a3;line-height:1.6';
+            banner.innerHTML = '🧩 <strong>เติมข้อมูลที่ยังขาด</strong><br>นักเรียน: <strong>'+window.escHTML(found.fullName||'')+'</strong>'+(found.studentId?(' &nbsp;(เลขประจำตัว '+window.escHTML(found.studentId)+')'):'')+'<br><span style="font-size:.85em;color:#6366f1">ช่องที่มีกรอบสีเหลือง = ข้อมูลที่ยังขาด กรอกเฉพาะส่วนนั้นแล้วกดบันทึก (ช่องอื่นแก้ไขได้เช่นกัน)</span>';
+            head.parentNode.insertBefore(banner, head.nextSibling);
+          }
+          prefillStudent(found);
+          if(sbtn){ sbtn.disabled=false; sbtn.textContent='💾 บันทึกข้อมูลที่เติม'; }
+          window.scrollTo({top:0, behavior:'smooth'});
+        }catch(e){
+          console.error(e);
+          if(sbtn){ sbtn.disabled=false; sbtn.textContent='📤 ส่งข้อมูล'; }
+          window.showToast('โหลดข้อมูลไม่สำเร็จ: '+e.message,'error',5000);
+        }
+      })();
+    }
 
     // ── Custom autocomplete for pfVillage & pfOldSchool (mobile-friendly) ──
     (function(){
