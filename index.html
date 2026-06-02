@@ -2993,7 +2993,7 @@ window.deleteStudent = async function(classId, studentDocId){
         return String(a.studentId||'').localeCompare(String(b.studentId||''),'th',{numeric:true});
       });
 
-      var cells = students.map(function(s){
+      var cards = students.map(function(s){
         var raw = s.raw || {};
         var nid = String(raw['เลขบัตรนักเรียน']||'').replace(/[^0-9]/g,'');
         var sid = String(s.studentId||'').trim();
@@ -3012,92 +3012,87 @@ window.deleteStudent = async function(classId, studentDocId){
         if(nid) p.push('nid='+encodeURIComponent(nid));
         else if(sid) p.push('sid='+encodeURIComponent(sid));
         var formUrl = baseUrl + '#form?' + p.join('&');
-        var qr = canBind ? ('https://api.qrserver.com/v1/create-qr-code/?size=300x300&margin=8&data=' + encodeURIComponent(formUrl)) : '';
+        var qr = canBind ? ('https://api.qrserver.com/v1/create-qr-code/?size=500x500&margin=10&data=' + encodeURIComponent(formUrl)) : '';
 
         var missHtml;
         if(missCount===0){
-          missHtml = '<div class="mq-complete">✅ ข้อมูลครบถ้วน</div>';
+          missHtml = '<div class="hc-complete">✅ ข้อมูลครบถ้วน</div>';
         } else {
-          var shown = missingLabels.slice(0,8).join(' · ') + (missingLabels.length>8?(' · +'+(missingLabels.length-8)+' รายการ'):'');
-          missHtml = '<div class="mq-missing"><span class="mq-missing-h">ยังขาด '+missCount+' รายการ:</span> '+window.escHTML(shown)+'</div>';
+          var shown = missingLabels.slice(0,10).join(' · ') + (missingLabels.length>10?(' · +'+(missingLabels.length-10)+' รายการ'):'');
+          missHtml = '<div class="hc-missing"><span class="hc-missing-h">ยังขาด '+missCount+' รายการ:</span> '+window.escHTML(shown)+'</div>';
         }
 
-        return '<div class="mq-card'+(missCount===0?' done':'')+'">'+
-            '<div class="mq-info">'+
-              '<div class="mq-name">'+window.escHTML(s.fullName||'(ไม่มีชื่อ)')+'</div>'+
-              '<div class="mq-sub">เลขประจำตัว '+window.escHTML(sid||'—')+(s.order?(' &nbsp;•&nbsp; ลำดับที่ '+s.order):'')+'</div>'+
-              missHtml+
+        // half-card (1 คน) — แนวนอน: ข้อมูลซ้าย / QR ขวา
+        return '<div class="hc-info">'+
+            '<div class="hc-head">'+
+              '<img class="hc-logo" src="'+window.escHTML(logo)+'" alt="" onerror="this.style.display=\'none\'">'+
+              '<div><div class="hc-school">'+window.escHTML(schoolName)+'</div>'+
+                '<div class="hc-cls">QR เติมข้อมูล &nbsp;•&nbsp; '+window.escHTML(clsLbl)+' &nbsp;•&nbsp; ปี '+year+'</div></div>'+
             '</div>'+
-            '<div class="mq-qrbox">'+
-              (canBind
-                ? '<img class="mq-qr" src="'+qr+'" alt="QR" crossorigin="anonymous"><div class="mq-scan">สแกนเพื่อเติมข้อมูล</div>'
-                : '<div class="mq-noqr">⚠️ ผูก QR ไม่ได้<br><small>ไม่มีเลขบัตร/เลขประจำตัว</small></div>')+
-            '</div>'+
+            '<div class="hc-name">'+window.escHTML(s.fullName||'(ไม่มีชื่อ)')+'</div>'+
+            '<div class="hc-sub">เลขประจำตัว '+window.escHTML(sid||'—')+(s.order?(' &nbsp;•&nbsp; ลำดับที่ '+s.order):'')+'</div>'+
+            missHtml+
+            '<div class="hc-tip">สแกน QR ด้านขวา → กรอกเฉพาะช่องที่ยังขาด → กดบันทึก</div>'+
+          '</div>'+
+          '<div class="hc-qr">'+
+            (canBind
+              ? '<img src="'+qr+'" alt="QR" crossorigin="anonymous"><div class="hc-scan">สแกนเพื่อเติมข้อมูล</div>'
+              : '<div class="hc-noqr">⚠️ ผูก QR ไม่ได้<br><small>ไม่มีเลขบัตร/เลขประจำตัว</small></div>')+
           '</div>';
-      }).join('');
+      });
 
-      var totalMissing = students.filter(function(s){
-        var raw=s.raw||{};
-        return checks.some(function(ck){ return ck.keys.some(function(k){ return isMissing(raw[k]); }); });
-      }).length;
+      // จัดหน้า: หน้าละ 2 คน (แนวนอน, มีเส้นตัดตรงกลาง)
+      var pagesHtml = '';
+      for(var pi=0; pi<cards.length; pi+=2){
+        var top = cards[pi];
+        var bot = cards[pi+1];
+        pagesHtml += '<div class="page">'+
+          '<div class="half cut">'+top+'</div>'+
+          (bot ? ('<div class="half">'+bot+'</div>') : '<div class="half half-empty"></div>')+
+        '</div>';
+      }
 
       var html = '<!DOCTYPE html><html lang="th"><head><meta charset="UTF-8">'+
         '<title>QR เติมข้อมูล — '+window.escHTML(clsLbl)+' — '+window.escHTML(schoolName)+'</title>'+
         '<link rel="preconnect" href="https://fonts.googleapis.com">'+
         '<link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@400;500;600;700&family=Kanit:wght@500;600;700;800&display=swap" rel="stylesheet">'+
         '<style>'+
-          '@page{size:A4 portrait;margin:1.2cm}'+
+          '@page{size:A4 landscape;margin:0}'+
           '*{box-sizing:border-box;margin:0;padding:0}'+
           'body{font-family:"Sarabun",sans-serif;color:#1f2937;background:#e5e7eb}'+
           '.toolbar{position:sticky;top:0;background:#1f2937;color:#fff;padding:10px 16px;display:flex;gap:10px;align-items:center;z-index:100}'+
           '.toolbar h2{margin:0;font-family:"Kanit",sans-serif;font-size:13pt;flex:1}'+
           '.toolbar button{background:#10b981;color:#fff;border:none;padding:8px 16px;border-radius:8px;cursor:pointer;font-family:"Kanit",sans-serif;font-size:12pt}'+
           '.toolbar button.cl{background:#6b7280}'+
-          '.page{background:#fff;width:210mm;min-height:297mm;padding:1.2cm;margin:6mm auto;box-shadow:0 4px 14px rgba(0,0,0,.1)}'+
-          '.doc-head{display:flex;align-items:center;gap:14px;padding-bottom:10px;border-bottom:3px double #0891b2;margin-bottom:12px}'+
-          '.doc-head img{width:56px;height:56px;border-radius:50%;object-fit:contain;background:#fff;padding:4px;border:1.5px solid #e5e7eb;flex-shrink:0}'+
-          '.doc-head h1{font-family:"Kanit",sans-serif;font-size:16pt;margin:0;color:#0e7490}'+
-          '.doc-head .school{font-size:12pt;color:#374151;margin-top:2px}'+
-          '.doc-head .dev{font-size:9pt;color:#6b7280;margin-top:3px}'+
-          '.doc-intro{background:#ecfeff;border-left:4px solid #0891b2;padding:8px 12px;margin-bottom:14px;font-size:10.5pt;line-height:1.6;color:#0c4a6e;border-radius:4px}'+
-          '.mq-grid{display:grid;grid-template-columns:1fr 1fr;gap:6mm}'+
-          '.mq-card{border:1.5px solid #e5e7eb;border-radius:10px;padding:5mm;display:flex;gap:4mm;align-items:center;background:#fafafa;break-inside:avoid;page-break-inside:avoid}'+
-          '.mq-card.done{background:#f0fdf4;border-color:#bbf7d0}'+
-          '.mq-info{flex:1;min-width:0}'+
-          '.mq-name{font-family:"Kanit",sans-serif;font-size:12pt;font-weight:600;color:#1f2937;line-height:1.3}'+
-          '.mq-sub{font-size:9pt;color:#6b7280;margin:2px 0 5px}'+
-          '.mq-missing{font-size:8.5pt;color:#92400e;background:#fffbeb;border:1px solid #fde68a;border-radius:6px;padding:4px 6px;line-height:1.5}'+
-          '.mq-missing-h{font-weight:700;color:#b45309;display:block}'+
-          '.mq-complete{font-size:9.5pt;color:#15803d;font-weight:600}'+
-          '.mq-qrbox{width:34mm;flex-shrink:0;text-align:center}'+
-          '.mq-qr{width:34mm;height:34mm;background:#fff}'+
-          '.mq-scan{font-size:7.5pt;color:#6b7280;margin-top:2px}'+
-          '.mq-noqr{font-size:8pt;color:#b91c1c;border:1px dashed #fca5a5;border-radius:6px;padding:6px}'+
-          '.doc-foot{margin-top:14px;padding-top:8px;border-top:1px solid #e5e7eb;text-align:center;font-size:9pt;color:#6b7280;line-height:1.6}'+
-          '@media print{body{background:#fff}.toolbar{display:none}.page{box-shadow:none;margin:0;width:auto}}'+
+          '.wrap{padding:16px 0}'+
+          '.page{background:#fff;width:297mm;height:210mm;margin:8mm auto;box-shadow:0 4px 14px rgba(0,0,0,.12);display:flex;flex-direction:column;page-break-after:always;break-after:page}'+
+          '.half{height:50%;padding:9mm 16mm;display:flex;align-items:center;gap:14mm;position:relative;overflow:hidden}'+
+          '.half.cut{border-bottom:2px dashed #94a3b8}'+
+          '.half.cut::after{content:"✂";position:absolute;left:6mm;bottom:-3.4mm;font-size:11pt;color:#94a3b8;background:#fff;padding:0 4px}'+
+          '.half-empty{opacity:0}'+
+          '.hc-info{flex:1;min-width:0;display:flex;flex-direction:column;gap:3mm}'+
+          '.hc-head{display:flex;align-items:center;gap:9px}'+
+          '.hc-logo{width:44px;height:44px;border-radius:50%;object-fit:contain;border:1.5px solid #e5e7eb;flex-shrink:0;background:#fff;padding:3px}'+
+          '.hc-school{font-family:"Kanit",sans-serif;font-size:12.5pt;font-weight:600;color:#0e7490;line-height:1.2}'+
+          '.hc-cls{font-size:9.5pt;color:#6b7280;margin-top:1px}'+
+          '.hc-name{font-family:"Kanit",sans-serif;font-size:19pt;font-weight:700;color:#1f2937;line-height:1.2}'+
+          '.hc-sub{font-size:10.5pt;color:#475569}'+
+          '.hc-missing{font-size:9.5pt;color:#92400e;background:#fffbeb;border:1px solid #fde68a;border-radius:8px;padding:6px 9px;line-height:1.55}'+
+          '.hc-missing-h{font-weight:700;color:#b45309;display:block;margin-bottom:1px}'+
+          '.hc-complete{font-size:11pt;color:#15803d;font-weight:600}'+
+          '.hc-tip{font-size:9pt;color:#0369a1;background:#ecfeff;border:1px solid #bae6fd;border-radius:6px;padding:4px 9px;align-self:flex-start}'+
+          '.hc-qr{flex-shrink:0;text-align:center}'+
+          '.hc-qr img{width:62mm;height:62mm;background:#fff;image-rendering:crisp-edges}'+
+          '.hc-scan{font-size:10pt;color:#374151;margin-top:3px;font-weight:500}'+
+          '.hc-noqr{font-size:9pt;color:#b91c1c;border:1px dashed #fca5a5;border-radius:8px;padding:14mm 8mm;width:62mm}'+
+          '@media print{body{background:#fff}.toolbar{display:none}.wrap{padding:0}.page{box-shadow:none;margin:0;width:auto;height:100vh}}'+
         '</style></head><body>'+
         '<div class="toolbar">'+
-          '<h2>🧩 QR เติมข้อมูล — '+window.escHTML(clsLbl)+'</h2>'+
+          '<h2>🧩 QR เติมข้อมูล — '+window.escHTML(clsLbl)+' (แนวนอน หน้าละ 2 คน)</h2>'+
           '<button onclick="window.print()">🖨️ พิมพ์</button>'+
           '<button class="cl" onclick="window.close()">← ปิด</button>'+
         '</div>'+
-        '<div class="page">'+
-          '<div class="doc-head">'+
-            '<img src="'+window.escHTML(logo)+'" alt="" onerror="this.style.display=\'none\'">'+
-            '<div style="flex:1">'+
-              '<h1>QR Code เติมข้อมูลที่ยังขาด — '+window.escHTML(clsLbl)+'</h1>'+
-              '<div class="school">'+window.escHTML(schoolName)+' &nbsp;•&nbsp; ปีการศึกษา '+year+'</div>'+
-              '<div class="dev">พัฒนาโดย ครูนนทพัทธ์ หิรัญเรือง — งานทะเบียนและเทียบโอนผลการเรียน กลุ่มบริหารงานวิชาการ</div>'+
-            '</div>'+
-          '</div>'+
-          '<div class="doc-intro">'+
-            '<strong>คำอธิบาย:</strong> นักเรียนแต่ละคนสแกน QR Code ของตนเอง (ผูกกับเลขบัตรประชาชน) เพื่อเข้าสู่แบบฟอร์มที่แสดงข้อมูลเดิม '+
-            'แล้วกรอกเฉพาะช่องที่ยังว่างหรือระบุว่า "ไม่ทราบ" ข้อมูลจะถูกเติมเข้าระเบียนเดิมโดยไม่สร้างซ้ำ &nbsp;'+
-            '(ทั้งหมด '+students.length+' คน — ยังมีข้อมูลไม่ครบ '+totalMissing+' คน)'+
-          '</div>'+
-          '<div class="mq-grid">'+cells+'</div>'+
-          '<div class="doc-foot"><strong>'+window.escHTML(schoolName)+'</strong> — ระบบสารสนเทศประจำชั้นเรียน</div>'+
-        '</div>'+
+        '<div class="wrap">'+pagesHtml+'</div>'+
         '</body></html>';
 
       var w = window.open('', '_blank');
@@ -5233,10 +5228,52 @@ window.deleteStudent = async function(classId, studentDocId){
     renderForm();
 
     // ════ โหมดเติมข้อมูล: โหลดนักเรียน → prefill → ไฮไลต์ช่องที่ยังขาด ════
+    var THAI_MONTHS = ['มกราคม','กุมภาพันธ์','มีนาคม','เมษายน','พฤษภาคม','มิถุนายน','กรกฎาคม','สิงหาคม','กันยายน','ตุลาคม','พฤศจิกายน','ธันวาคม'];
+    function normMonth(v){
+      var s = String(v==null?'':v).trim();
+      if(!s) return '';
+      // เลขไทย → อารบิก
+      s = s.replace(/[๐-๙]/g, function(c){ return String('๐๑๒๓๔๕๖๗๘๙'.indexOf(c)); });
+      // เป็นตัวเลข 1–12
+      if(/^\d{1,2}$/.test(s)){ var n=parseInt(s,10); if(n>=1&&n<=12) return THAI_MONTHS[n-1]; }
+      // ชื่อเต็มภาษาไทยตรงตัว
+      if(THAI_MONTHS.indexOf(s)>=0) return s;
+      // ตัวย่อภาษาไทย (ตัด . และช่องว่าง)
+      var sa = s.replace(/[.\s]/g,'');
+      var abbr = {'มค':0,'กพ':1,'มีค':2,'เมย':3,'พค':4,'มิย':5,'กค':6,'สค':7,'กย':8,'ตค':9,'พย':10,'ธค':11};
+      if(abbr[sa]!=null) return THAI_MONTHS[abbr[sa]];
+      // จับคู่บางส่วน (ขึ้นต้นตรงกัน)
+      for(var i=0;i<THAI_MONTHS.length;i++){ if(THAI_MONTHS[i].indexOf(s)===0 || s.indexOf(THAI_MONTHS[i])===0) return THAI_MONTHS[i]; }
+      // อังกฤษ
+      var eng=['jan','feb','mar','apr','may','jun','jul','aug','sep','oct','nov','dec'], sl=s.toLowerCase();
+      for(var j=0;j<eng.length;j++){ if(sl.indexOf(eng[j])===0) return THAI_MONTHS[j]; }
+      return '';
+    }
     function fillSetVal(id, val){
       var el = document.getElementById(id);
       if(!el) return;
-      el.value = (val==null?'':String(val));
+      var v = (val==null?'':String(val));
+      if(el.tagName === 'SELECT'){
+        el.value = v;
+        // ถ้าไม่ตรง option ใดเลย → ลองจับคู่แบบ trim / บางส่วน
+        if(el.selectedIndex === -1 && v.trim()){
+          var vt = v.trim();
+          var opts = el.options, matched = false;
+          for(var i=0;i<opts.length;i++){
+            var ot = (opts[i].value||opts[i].text||'').trim();
+            if(ot === vt){ el.selectedIndex = i; matched = true; break; }
+          }
+          if(!matched){
+            for(var k=0;k<opts.length;k++){
+              var ot2 = (opts[k].value||opts[k].text||'').trim();
+              if(ot2 && (ot2.indexOf(vt)===0 || vt.indexOf(ot2)===0)){ el.selectedIndex = k; matched = true; break; }
+            }
+          }
+          if(!matched) el.selectedIndex = 0; // คืนค่า default ถ้าจับคู่ไม่ได้
+        }
+      } else {
+        el.value = v;
+      }
     }
     function fillMark(id){
       var el = document.getElementById(id);
@@ -5285,7 +5322,9 @@ window.deleteStudent = async function(classId, studentDocId){
       // เติมค่าจาก map (เฉพาะที่มีค่า)
       (window.PF_FIELD_MAP||[]).forEach(function(f){
         var v = praw[f.key];
-        if(v!=null && String(v).trim()!=='') fillSetVal(f.id, v);
+        if(v==null || String(v).trim()==='') return;
+        if(f.id==='pfBirthMonth') v = normMonth(v) || v; // แปลงเดือนให้ตรง option
+        fillSetVal(f.id, v);
       });
       // ไฮไลต์ช่องที่ยังขาด (ใช้ค่าจริงจากระบบ)
       (window.PF_FIELD_MAP||[]).forEach(function(f){
