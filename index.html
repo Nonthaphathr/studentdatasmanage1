@@ -5255,21 +5255,31 @@ window.deleteStudent = async function(classId, studentDocId){
       var v = (val==null?'':String(val));
       if(el.tagName === 'SELECT'){
         el.value = v;
-        // ถ้าไม่ตรง option ใดเลย → ลองจับคู่แบบ trim / บางส่วน
+        // ถ้าไม่ตรง option ใดเลย → จับคู่แบบ trim / ตัดเครื่องหมาย แล้วถ้ายังไม่ได้ ค่อยเพิ่ม option ใหม่
         if(el.selectedIndex === -1 && v.trim()){
           var vt = v.trim();
-          var opts = el.options, matched = false;
+          var opts = el.options, idx = -1;
+          // 1) ตรงตัวหลัง trim
           for(var i=0;i<opts.length;i++){
-            var ot = (opts[i].value||opts[i].text||'').trim();
-            if(ot === vt){ el.selectedIndex = i; matched = true; break; }
+            if((opts[i].value||opts[i].text||'').trim() === vt){ idx = i; break; }
           }
-          if(!matched){
+          // 2) ตรงตัวหลังตัดช่องว่าง/จุด/ขีด (กันความต่างเล็กน้อย เช่น ตัวย่อ)
+          if(idx<0){
+            var norm = function(x){ return String(x).replace(/[\s.\-]/g,''); };
+            var vn = norm(vt);
             for(var k=0;k<opts.length;k++){
-              var ot2 = (opts[k].value||opts[k].text||'').trim();
-              if(ot2 && (ot2.indexOf(vt)===0 || vt.indexOf(ot2)===0)){ el.selectedIndex = k; matched = true; break; }
+              if(norm(opts[k].value||opts[k].text||'') === vn){ idx = k; break; }
             }
           }
-          if(!matched) el.selectedIndex = 0; // คืนค่า default ถ้าจับคู่ไม่ได้
+          if(idx>=0){
+            el.selectedIndex = idx;
+          } else {
+            // 3) คงค่าจริงจากระบบไว้: เพิ่มเป็นตัวเลือกใหม่แล้วเลือก (ไม่เดา/ไม่ทิ้งข้อมูล)
+            var op = document.createElement('option');
+            op.value = vt; op.text = vt; op.selected = true;
+            el.appendChild(op);
+            el.value = vt;
+          }
         }
       } else {
         el.value = v;
