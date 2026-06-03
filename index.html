@@ -920,7 +920,18 @@ window.bulkSaveStudents = async function(classId, students){
   let oldSnap;
   try{ oldSnap = await getDocsFromServer(colRef); }catch(e){ oldSnap = await getDocs(colRef); }
   const oldIds = [];
-  oldSnap.forEach(d => oldIds.push(d.ref));
+  // ── เก็บอ้างอิงรูปเดิมไว้ carry-over ตอน re-import (key ด้วย studentId เป็นหลัก, docId เป็นสำรอง) ──
+  const photoMap = {};
+  oldSnap.forEach(d => {
+    oldIds.push(d.ref);
+    const od = d.data() || {};
+    if(od.photoFileId || od.photoURL){
+      const rec = { photoFileId: od.photoFileId || '', photoURL: od.photoURL || '' };
+      const osid = String(od.studentId || '').trim();
+      if(osid) photoMap['sid:'+osid] = rec;
+      photoMap['id:'+d.id] = rec;
+    }
+  });
 
   // ── ขั้น 2: เพิ่ม/อัปเดต doc ใหม่ทั้งหมดก่อน ──
   const newIds = new Set();
@@ -933,6 +944,11 @@ window.bulkSaveStudents = async function(classId, students){
       ? sanitized
       : ('TMP_'+Math.random().toString(36).slice(2,10));
     newIds.add(docId);
+    // carry-over รูปจากข้อมูลเดิม ถ้าข้อมูลใหม่ที่ import มายังไม่มีรูป (จับคู่ตาม studentId ก่อน แล้วค่อย docId)
+    if(!s.photoFileId && !s.photoURL){
+      const rec = (rawSid && photoMap['sid:'+rawSid]) || photoMap['id:'+docId];
+      if(rec){ s.photoFileId = rec.photoFileId; s.photoURL = rec.photoURL; }
+    }
     const ref = doc(db, 'classrooms', classId, 'students', docId);
     bw.set(ref, Object.assign({}, s, {createdAt: serverTimestamp(), updatedAt: serverTimestamp()}));
     n++;
@@ -954,6 +970,15 @@ window.bulkSaveStudents = async function(classId, students){
 window.updateStudent = async function(classId, studentDocId, patch){
   const ref = doc(db, 'classrooms', classId, 'students', studentDocId);
   await updateDoc(ref, Object.assign({}, patch, {updatedAt: serverTimestamp()}));
+};
+
+// บันทึกอ้างอิงรูปแบบทนทาน: ใช้ setDoc merge แทน updateDoc
+// updateDoc จะ error "No document to update" ถ้าเอกสารไม่มีอยู่ (เช่น docId แบบ TMP_ ที่ stale
+// หลัง re-import หรือ นักเรียนที่ยังไม่มีเลขประจำตัว) — setDoc merge จะรวมฟิลด์เข้ากับของเดิม
+// ถ้ามีเอกสารอยู่ และสร้างให้ถ้ายังไม่มี โดยไม่ลบฟิลด์อื่น
+window.savePhotoRef = async function(classId, studentDocId, patch){
+  const ref = doc(db, 'classrooms', classId, 'students', studentDocId);
+  await setDoc(ref, Object.assign({}, patch, {updatedAt: serverTimestamp()}), {merge:true});
 };
 
 window.deleteStudent = async function(classId, studentDocId){
@@ -3983,7 +4008,7 @@ window.deleteStudent = async function(classId, studentDocId){
 
           // บันทึกอ้างอิงรูปลง Firestore (เก็บทั้ง fileId และ URL สำหรับแสดงผลทุกที่)
           var patch = { photoFileId: resUp.fileId, photoURL: resUp.viewUrl };
-          await window.updateStudent(classId, studentDocId, patch);
+          await window.savePhotoRef(classId, studentDocId, patch);
 
           // อัปเดต cache ในตาราง
           s.photoFileId = resUp.fileId; s.photoURL = resUp.viewUrl;
