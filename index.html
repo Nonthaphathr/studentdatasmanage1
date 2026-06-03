@@ -765,7 +765,9 @@ const DEFAULT_SETTINGS = {
   schoolName: 'โรงเรียนกระดุมทองวิทยา',
   schoolAddress: 'อำเภอ — จังหวัดศรีสะเกษ',
   schoolLogo: 'https://nonthaphathr.github.io/uploadimg/logorecruit2026.png',
-  advisors: {}  // {classId: [{name, position, phone}]}
+  advisors: {},  // {classId: [{name, position, phone}]}
+  driveWebAppUrl: '',                                  // URL ของ Google Apps Script Web App (/exec) สำหรับอัปโหลดรูป
+  driveFolderId: '1TKE0tjlFjusB3aAROo13y8CPRaP7MWs9'   // โฟลเดอร์ Google Drive ปลายทางเก็บรูปนักเรียน
 };
 
 async function loadSettings(){
@@ -2112,6 +2114,15 @@ window.deleteStudent = async function(classId, studentDocId){
       '<div class="form-row"><label>ปีการศึกษาปัจจุบัน (พ.ศ.)</label><input type="number" id="stYear" value="'+(s.currentAcademicYear||'')+'" min="2400" max="2700"></div>'+
       '</div>'+
 
+      '<div class="set-section"><h4>🖼️ อัปโหลดรูปนักเรียน (Google Drive)</h4>'+
+      '<p class="muted">เก็บรูปนักเรียนไว้ในโฟลเดอร์ Google Drive ผ่าน Google Apps Script (ตั้งค่าครั้งเดียว) — รูปจะแสดงในกล่องรูปทุกที่ทั้งหน้ารายละเอียดและเอกสารพิมพ์ ตั้งชื่อไฟล์อัตโนมัติแยกตามชั้น (ม.) และชื่อนักเรียน</p>'+
+      '<div class="form-row"><label>URL ของ Apps Script Web App (ลงท้ายด้วย /exec)</label><input type="url" id="stDriveUrl" value="'+window.escHTML(s.driveWebAppUrl||'')+'" placeholder="https://script.google.com/macros/s/XXXX/exec"></div>'+
+      '<div class="form-row"><label>Google Drive Folder ID ปลายทาง</label><input type="text" id="stDriveFolder" value="'+window.escHTML(s.driveFolderId||'1TKE0tjlFjusB3aAROo13y8CPRaP7MWs9')+'">'+
+      '<div class="hint">ค่าเริ่มต้นคือโฟลเดอร์ที่กำหนดไว้ — เปลี่ยนได้หากต้องการเก็บที่อื่น</div></div>'+
+      '<button class="btn" id="stDriveTest">🔌 ทดสอบการเชื่อมต่อ</button>'+
+      '<div id="stDriveTestResult" class="hint" style="margin-top:.4rem"></div>'+
+      '</div>'+
+
       '<div class="set-section"><h4>🔄 การเลื่อนชั้นปีการศึกษา</h4>'+
       '<p class="muted">เลื่อนนักเรียนทั้งหมดไปยังปีการศึกษาถัดไป (ม.1→ม.2, ..., ม.6→จบการศึกษา)</p>'+
       '<button class="btn btn-warning" id="stPromote">🚀 เปิดเครื่องมือเลื่อนชั้น</button>'+
@@ -2181,10 +2192,14 @@ window.deleteStudent = async function(classId, studentDocId){
       var year = parseInt(bd.querySelector('#stYear').value,10);
       if(!name){ window.showToast('กรุณากรอกชื่อโรงเรียน','warning'); return; }
       if(!year || year<2400 || year>2700){ window.showToast('ปีการศึกษาไม่ถูกต้อง','warning'); return; }
+      var driveUrl = bd.querySelector('#stDriveUrl').value.trim();
+      var driveFolder = bd.querySelector('#stDriveFolder').value.trim() || '1TKE0tjlFjusB3aAROo13y8CPRaP7MWs9';
       var ok = await window.saveSettings({
         schoolName: name, schoolAddress: addr,
         schoolLogo: logo || 'https://nonthaphathr.github.io/uploadimg/logorecruit2026.png',
-        currentAcademicYear: year
+        currentAcademicYear: year,
+        driveWebAppUrl: driveUrl,
+        driveFolderId: driveFolder
       });
       if(ok){ close(); window.refreshCurrentView(); }
     };
@@ -2199,6 +2214,23 @@ window.deleteStudent = async function(classId, studentDocId){
     bd.querySelector('#stRestore').onclick = function(){ close(); window.restoreAll(); };
     bd.querySelector('#stExportAllXlsx').onclick = function(){ close(); window.exportAllStudentsXlsx(); };
     bd.querySelector('#stClear').onclick = function(){ close(); window.clearAllData(); };
+
+    // ── ทดสอบการเชื่อมต่อ Google Apps Script ──
+    bd.querySelector('#stDriveTest').onclick = async function(){
+      var box = bd.querySelector('#stDriveTestResult');
+      var url = bd.querySelector('#stDriveUrl').value.trim();
+      if(!url){ box.innerHTML = '<span style="color:var(--danger)">⚠️ กรุณากรอก URL ก่อน</span>'; return; }
+      if(!/\/exec\s*$/.test(url)){ box.innerHTML = '<span style="color:var(--warning,#b45309)">⚠️ URL ควรลงท้ายด้วย /exec</span>'; }
+      box.innerHTML = '⏳ กำลังทดสอบ...';
+      try{
+        var r = await fetch(url, { method:'GET' });
+        var j = await r.json();
+        if(j && j.ok){ box.innerHTML = '<span style="color:var(--success,#16a34a)">✅ เชื่อมต่อสำเร็จ — '+window.escHTML(j.msg||'พร้อมใช้งาน')+'</span>'; }
+        else { box.innerHTML = '<span style="color:var(--danger)">❌ ตอบกลับผิดปกติ — ตรวจสอบการ Deploy</span>'; }
+      }catch(e){
+        box.innerHTML = '<span style="color:var(--danger)">❌ เชื่อมต่อไม่ได้: '+window.escHTML(e.message)+'<br><small>ตรวจว่า Deploy แบบ Web app / Who has access = Anyone และ URL ถูกต้อง</small></span>';
+      }
+    };
 
     // ── Suggest lists — load & live-preview ──
     (function(){
@@ -3762,7 +3794,7 @@ window.deleteStudent = async function(classId, studentDocId){
       '<div class="modal-body">'+
       '<div class="flex flex-wrap mb-2" style="align-items:flex-start;gap:1rem">'+
         '<div class="photo-box" id="dtPhoto" title="คลิกเพื่ออัปโหลดรูป">'+
-          (s.photoURL?'<img src="'+s.photoURL+'">':'<span>📷 รูปนักเรียน<br><small>3×4 cm</small></span>')+
+          (window.getPhotoSrc(s)?'<img src="'+window.escHTML(window.getPhotoSrc(s))+'" referrerpolicy="no-referrer">':'<span>📷 รูปนักเรียน<br><small>3×4 cm</small></span>')+
           '<div class="hint">คลิกเพื่อเปลี่ยนรูป</div>'+
         '</div>'+
         '<div style="flex:1;min-width:200px">'+
@@ -3921,27 +3953,53 @@ window.deleteStudent = async function(classId, studentDocId){
       };
     });
 
-    // photo upload
+    // photo upload → Google Drive (ผ่าน Apps Script Web App)
     bd.querySelector('#dtPhoto').onclick = function(){
+      var st = window.AppState.settings || {};
+      if(!(st.driveWebAppUrl||'').trim()){
+        window.showToast('ยังไม่ได้ตั้งค่าการอัปโหลดรูป — ไปที่ ⚙️ ตั้งค่า > อัปโหลดรูปนักเรียน (Google Drive)','warning');
+        return;
+      }
       var inp = document.createElement('input');
       inp.type='file'; inp.accept='image/*';
       inp.onchange = async function(){
         var f = inp.files[0]; if(!f) return;
-        if(f.size > 1024*1024){ window.showToast('ไฟล์รูปต้องไม่เกิน 1 MB','warning'); return; }
+        if(f.size > 15*1024*1024){ window.showToast('ไฟล์รูปต้องไม่เกิน 15 MB','warning'); return; }
         try{
-          var b64 = await fileToDataURL(f);
-          // resize ในเฟสเริ่ม: ใช้ตามขนาดเดิม (ครูจะเลือกรูปขนาดเล็กเอง)
-          window.showLoading(true,'กำลังบันทึกรูป...');
-          await window.updateStudent(classId, studentDocId, {photoURL: b64});
-          // อัปเดต cache
+          window.showLoading(true,'กำลังย่อรูป...');
+          var jpg = await window.resizeImageToJpeg(f, 900, 0.85);   // ย่อก่อนอัปโหลด
+
+          // สร้างชื่อไฟล์: แยก ม. และระบุชื่อ — เก็บรวมในโฟลเดอร์เดียว
+          var rm   = (window.AppState.classrooms||[]).find(function(c){return c.id===classId}) || {};
+          var info = window.GRADE_INFO[rm.grade] || {num:'?'};
+          var room = rm.room || '';
+          var sid  = String(s.studentId || studentDocId || '').trim();
+          var nm   = String(s.fullName || '').replace(/[\/\\:*?"<>|]+/g,' ').replace(/\s+/g,' ').trim();
+          var prefix   = 'ม.'+info.num + (room ? '-'+room : '') + '_' + sid + '_';
+          var filename = prefix + (nm || 'นักเรียน') + '.jpg';
+
+          window.showLoading(true,'กำลังอัปโหลดขึ้น Google Drive...');
+          var resUp = await window.gasUploadStudentPhoto(jpg, filename, prefix, s.photoFileId || '');
+
+          // บันทึกอ้างอิงรูปลง Firestore (เก็บทั้ง fileId และ URL สำหรับแสดงผลทุกที่)
+          var patch = { photoFileId: resUp.fileId, photoURL: resUp.viewUrl };
+          await window.updateStudent(classId, studentDocId, patch);
+
+          // อัปเดต cache ในตาราง
+          s.photoFileId = resUp.fileId; s.photoURL = resUp.viewUrl;
           var idx = TBL_STATE.all.findIndex(function(x){return x.id===studentDocId});
-          if(idx>=0) TBL_STATE.all[idx].photoURL = b64;
+          if(idx>=0){ TBL_STATE.all[idx].photoFileId = resUp.fileId; TBL_STATE.all[idx].photoURL = resUp.viewUrl; }
+
           window.showLoading(false);
-          window.showToast('บันทึกรูปแล้ว','success');
-          // refresh photo
+          window.showToast('บันทึกรูปขึ้น Google Drive แล้ว','success');
+
+          // refresh กรอบภาพใน modal
           var pb = bd.querySelector('#dtPhoto');
-          pb.innerHTML = '<img src="'+b64+'"><div class="hint">คลิกเพื่อเปลี่ยนรูป</div>';
-        }catch(e){ window.showLoading(false); window.showToast('บันทึกรูปไม่สำเร็จ: '+e.message,'error'); }
+          pb.innerHTML = '<img src="'+window.escHTML(window.getPhotoSrc(s))+'" referrerpolicy="no-referrer"><div class="hint">คลิกเพื่อเปลี่ยนรูป</div>';
+        }catch(e){
+          window.showLoading(false);
+          window.showToast('อัปโหลดรูปไม่สำเร็จ: '+e.message,'error');
+        }
       };
       inp.click();
     };
@@ -4059,6 +4117,83 @@ window.deleteStudent = async function(classId, studentDocId){
       fr.readAsDataURL(f);
     });
   }
+
+  // ═══════════════ Student photo helpers (Google Drive) ═══════════════
+  // คืน src ของรูปนักเรียนสำหรับนำไปใส่ใน <img>
+  //  - ถ้ามี photoFileId (เก็บใน Google Drive) → สร้างลิงก์ thumbnail สาธารณะ
+  //  - ถ้าเป็นข้อมูลเก่า (base64 / URL ใน photoURL) → ใช้ค่าเดิม
+  window.getPhotoSrc = function(s){
+    if(!s) return '';
+    if(s.photoFileId) return 'https://drive.google.com/thumbnail?id=' + s.photoFileId + '&sz=w1000';
+    if(s.photoURL) return s.photoURL;
+    return '';
+  };
+
+  // ย่อรูปลงเหลือด้านยาวสุดไม่เกิน maxEdge แล้วแปลงเป็น JPEG (data URL)
+  // ลดขนาดไฟล์ก่อนส่งขึ้น Drive — เร็วและประหยัด
+  window.resizeImageToJpeg = function(file, maxEdge, quality){
+    maxEdge = maxEdge || 900; quality = quality || 0.85;
+    return new Promise(function(res, rej){
+      var fr = new FileReader();
+      fr.onload = function(){
+        var img = new Image();
+        img.onload = function(){
+          var w = img.naturalWidth || img.width, h = img.naturalHeight || img.height;
+          var scale = Math.min(1, maxEdge / Math.max(w, h));
+          var cw = Math.max(1, Math.round(w * scale)), ch = Math.max(1, Math.round(h * scale));
+          var cv = document.createElement('canvas'); cv.width = cw; cv.height = ch;
+          var ctx = cv.getContext('2d');
+          ctx.fillStyle = '#ffffff'; ctx.fillRect(0, 0, cw, ch); // พื้นขาวกันรูปโปร่งใสกลายเป็นดำ
+          ctx.drawImage(img, 0, 0, cw, ch);
+          try{ res(cv.toDataURL('image/jpeg', quality)); }
+          catch(e){ rej(new Error('แปลงรูปไม่สำเร็จ')); }
+        };
+        img.onerror = function(){ rej(new Error('โหลดรูปไม่ได้ — ไฟล์อาจเสียหาย')); };
+        img.src = fr.result;
+      };
+      fr.onerror = function(){ rej(new Error('อ่านไฟล์ไม่ได้')); };
+      fr.readAsDataURL(file);
+    });
+  };
+
+  // อัปโหลดรูปขึ้น Google Drive ผ่าน Apps Script Web App
+  //   dataB64     : data URL หรือ base64 ของรูป (JPEG)
+  //   filename    : ชื่อไฟล์ที่จะบันทึก (มี ม. และชื่อ)
+  //   dedupPrefix : prefix ที่ใช้หาไฟล์เดิมของนักเรียนคนนี้เพื่อทับ (กันรูปซ้ำ)
+  //   oldFileId   : (สำรอง) fileId เดิม กรณีไม่มี dedupPrefix
+  // คืน { ok, fileId, viewUrl, name }
+  window.gasUploadStudentPhoto = function(dataB64, filename, dedupPrefix, oldFileId){
+    var st = window.AppState.settings || {};
+    var url = (st.driveWebAppUrl || '').trim();
+    if(!url) return Promise.reject(new Error('ยังไม่ได้ตั้งค่า URL ของ Google Apps Script — ไปที่ ⚙️ ตั้งค่า > อัปโหลดรูปนักเรียน (Google Drive)'));
+    var folderId = (st.driveFolderId || '1TKE0tjlFjusB3aAROo13y8CPRaP7MWs9').trim();
+    var payload = JSON.stringify({
+      action: 'upload',
+      folderId: folderId,
+      filename: filename,
+      dedupPrefix: dedupPrefix || '',
+      oldFileId: oldFileId || '',
+      mimeType: 'image/jpeg',
+      data: dataB64
+    });
+    // ใช้ Content-Type text/plain เพื่อเลี่ยง CORS preflight ของ Apps Script
+    return fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+      body: payload
+    }).then(function(r){ return r.json(); }).then(function(json){
+      if(!json || !json.ok) throw new Error((json && json.error) || 'อัปโหลดไม่สำเร็จ');
+      return json;
+    });
+  };
+
+  // ทดสอบการเชื่อมต่อ Apps Script (เรียก doGet)
+  window.gasTestConnection = function(){
+    var st = window.AppState.settings || {};
+    var url = (st.driveWebAppUrl || '').trim();
+    if(!url) return Promise.reject(new Error('ยังไม่ได้กรอก URL'));
+    return fetch(url, { method: 'GET' }).then(function(r){ return r.json(); });
+  };
 
   // ═══════════════ Print window ═══════════════
   window.openPrintWindow = async function(classId){
@@ -4267,8 +4402,9 @@ window.deleteStudent = async function(classId, studentDocId){
 
   function buildStudentPage(s, idx, info, rm, year, schoolName){
     var r = s.raw || {};
-    var photoHTML = s.photoURL
-      ? '<img src="'+escH(s.photoURL)+'">'
+    var _psrc = window.getPhotoSrc(s);
+    var photoHTML = _psrc
+      ? '<img src="'+escH(_psrc)+'" referrerpolicy="no-referrer">'
       : '<span class="ph-empty">รูปนักเรียน<br>(3×4 ซม.)</span>';
 
     // Student address (registered home) — includes village name if available
