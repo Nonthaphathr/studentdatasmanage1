@@ -516,6 +516,41 @@ table.data-tbl .gender-f{color:#be185d}
   display:inline-block;background:#eef2ff;color:#4338ca;border-radius:999px;
   padding:.1rem .6rem;font-size:.78rem;font-weight:600;margin-left:.5rem
 }
+
+/* ═══ Home Map (แผนที่บ้านนักเรียน) ═══ */
+.hm-wrap{display:flex;gap:1rem;height:calc(100vh - 230px);min-height:480px}
+.hm-side{width:300px;flex-shrink:0;background:var(--surface);border:1px solid var(--border);border-radius:var(--r);display:flex;flex-direction:column;overflow:hidden}
+.hm-side-head{padding:.7rem .8rem;border-bottom:1px solid var(--border);background:var(--bg)}
+.hm-side-head input{width:100%;padding:.45rem .6rem;border:1px solid var(--border-strong);border-radius:8px;font-size:.9rem}
+.hm-count{font-size:.8rem;color:var(--ink-muted);margin-top:.35rem}
+.hm-list{flex:1;overflow-y:auto}
+.hm-item{display:flex;align-items:center;gap:.5rem;padding:.55rem .7rem;border-bottom:1px solid var(--border);cursor:pointer;font-size:.88rem;transition:.12s}
+.hm-item:hover{background:#f5f7ff}
+.hm-item.sel{background:#eef2ff;border-left:3px solid #4338ca}
+.hm-item .st{font-size:1rem;flex-shrink:0}
+.hm-item .nm{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.hm-item .nm small{display:block;color:var(--ink-muted);font-size:.75rem}
+.hm-item .nav-btn{border:none;background:#e0e7ff;color:#3730a3;border-radius:7px;padding:.25rem .45rem;cursor:pointer;font-size:.85rem;flex-shrink:0}
+.hm-item .nav-btn:hover{background:#c7d2fe}
+.hm-mapbox{flex:1;display:flex;flex-direction:column;gap:.6rem;min-width:0}
+.hm-toolbar{display:flex;gap:.5rem;flex-wrap:wrap;align-items:center}
+.hm-toolbar input{flex:1;min-width:180px;padding:.5rem .7rem;border:1px solid var(--border-strong);border-radius:8px;font-size:.88rem}
+#hmMap{flex:1;border-radius:var(--r);border:1px solid var(--border);min-height:300px;z-index:0}
+.hm-hint{font-size:.82rem;color:var(--ink-muted);background:#fffbeb;border:1px solid #fde68a;border-radius:8px;padding:.45rem .7rem}
+.hm-pin{font-size:26px;line-height:26px;filter:drop-shadow(0 2px 3px rgba(0,0,0,.4));transform:translateY(-4px)}
+.hm-pin.sel{font-size:32px;line-height:32px}
+.hm-pop{font-family:'Sarabun',sans-serif;font-size:.88rem;min-width:170px}
+.hm-pop b{font-family:'Kanit',sans-serif}
+.hm-pop .addr{color:#555;font-size:.8rem;margin:.25rem 0}
+.hm-pop .row{display:flex;gap:.4rem;margin-top:.4rem}
+.hm-pop a,.hm-pop button{flex:1;text-align:center;border:none;border-radius:7px;padding:.35rem .4rem;font-size:.8rem;cursor:pointer;text-decoration:none;font-family:'Sarabun',sans-serif}
+.hm-pop a.nav{background:#16a34a;color:#fff}
+.hm-pop button.del{background:#fee2e2;color:#b91c1c}
+@media(max-width:760px){
+  .hm-wrap{flex-direction:column;height:auto}
+  .hm-side{width:100%;max-height:220px}
+  #hmMap{height:55vh;min-height:380px}
+}
 </style>
 </head>
 <body>
@@ -1048,6 +1083,7 @@ window.deleteStudent = async function(classId, studentDocId){
     else if(v==='grade')     main.innerHTML = renderGradePage();
     else if(v==='studentList') main.innerHTML = renderStudentListPage();
     else if(v==='analytics')   main.innerHTML = renderAnalyticsPage();
+    else if(v==='homeMap')     main.innerHTML = window.renderHomeMapPage();
     else                     main.innerHTML = renderMainPage();
 
     // attach handlers via class delegation
@@ -1071,6 +1107,8 @@ window.deleteStudent = async function(classId, studentDocId){
     else if(act==='selectRoom'){ window.AppState.currentClassId=p.classId; setView('grade'); }
     else if(act==='addRoom'){ openAddRoomModal(p.grade); }
     else if(act==='gotoStudents'){ setView('studentList'); }
+    else if(act==='gotoHomeMap'){ setView('homeMap'); }
+    else if(act==='backGrade'){ setView('grade'); }
     else if(act==='gotoPrint'){ openPrintWindow(window.AppState.currentClassId); }
     else if(act==='importFile'){ openImportDialog(window.AppState.currentClassId); }
     else if(act==='bulkImport'){ window.openBulkImportDialog(); }
@@ -1168,6 +1206,7 @@ window.deleteStudent = async function(classId, studentDocId){
     html += '<div class="action-cards" style="--accent:'+info.color+'">';
     html += '<div class="action-card" data-act="gotoStudents"><div class="ac-icon">👥</div><div class="ac-text"><h3>ดูข้อมูลนักเรียน</h3><p>รายชื่อ ค้นหา แก้ไข อัปโหลดรูป</p></div></div>';
     html += '<div class="action-card" data-act="gotoPrint"><div class="ac-icon">🖨️</div><div class="ac-text"><h3>โหลดเอกสารประจำชั้น</h3><p>พิมพ์ปก คำนำ สารบัญ ข้อมูลรายคน</p></div></div>';
+    html += '<div class="action-card" data-act="gotoHomeMap"><div class="ac-icon">🗺️</div><div class="ac-text"><h3>แผนที่บ้านนักเรียน</h3><p>ปักหมุดบ้าน นำทางด้วย Google Maps</p></div></div>';
     html += '</div>';
     html += '<button class="add-student-cta" data-act="addStudentManual" data-p=\''+JSON.stringify({classId:current.id})+'\'>'+
               '<span class="asc-icon">➕</span>'+
@@ -6089,6 +6128,292 @@ function printAnalyticsPDF(sections,cur,total,showSummary){
     rows += phoneRow(guardLabel, d.gn||'', d.gp||'');
     pmList.innerHTML = rows;
     modal.classList.add('show');
+  };
+})();
+</script>
+<script>
+/* ═══════════════════════════════════════════════════════════════
+   แผนที่บ้านนักเรียน (Home Map)
+   - Leaflet + OpenStreetMap (ฟรี ไม่ต้องใช้ API key)
+   - บันทึกพิกัด homeLat / homeLng ลง Firestore ผ่าน savePhotoRef (setDoc merge)
+   - ปักหมุดได้ 3 วิธี: คลิกแผนที่ / วางลิงก์-พิกัด Google Maps / ใช้ GPS ปัจจุบัน
+   - ปุ่มนำทางเปิด Google Maps จริง
+   ═══════════════════════════════════════════════════════════════ */
+(function(){
+  var HM = { map:null, markers:{}, students:[], classId:null, selectedId:null };
+
+  function loadLeaflet(cb){
+    if(window.L){ cb(); return; }
+    if(loadLeaflet._loading){ loadLeaflet._cbs.push(cb); return; }
+    loadLeaflet._loading = true; loadLeaflet._cbs = [cb];
+    var css = document.createElement('link');
+    css.rel = 'stylesheet';
+    css.href = 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css';
+    document.head.appendChild(css);
+    var js = document.createElement('script');
+    js.src = 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js';
+    js.onload = function(){ loadLeaflet._cbs.forEach(function(f){f();}); };
+    js.onerror = function(){ window.showToast('โหลดไลบรารีแผนที่ไม่สำเร็จ — ตรวจสอบอินเทอร์เน็ต','error'); };
+    document.head.appendChild(js);
+  }
+
+  function hasPin(s){ return typeof s.homeLat==='number' && typeof s.homeLng==='number'; }
+
+  function shortAddr(s){
+    var r = s.raw || {};
+    var parts = [];
+    if(r['บ้านเลขที่นักเรียน']) parts.push('บ้านเลขที่ '+r['บ้านเลขที่นักเรียน']);
+    if(r['หมู่นักเรียน']) parts.push('หมู่ '+r['หมู่นักเรียน']);
+    if(r['ตำบลนักเรียน']) parts.push('ต.'+r['ตำบลนักเรียน']);
+    if(r['อำเภอนักเรียน']) parts.push('อ.'+r['อำเภอนักเรียน']);
+    return parts.join(' ');
+  }
+
+  // ── แปลงลิงก์ Google Maps หรือข้อความพิกัด → {lat,lng} ──
+  function parseLatLng(text){
+    if(!text) return null;
+    text = text.trim();
+    var m;
+    // รูปแบบ !3d15.123!4d104.567 (ลิงก์สถานที่)
+    m = text.match(/!3d(-?\d+(?:\.\d+)?)!4d(-?\d+(?:\.\d+)?)/);
+    if(m) return {lat:+m[1], lng:+m[2]};
+    // รูปแบบ @15.123,104.567
+    m = text.match(/@(-?\d+(?:\.\d+)?),\s*(-?\d+(?:\.\d+)?)/);
+    if(m) return {lat:+m[1], lng:+m[2]};
+    // รูปแบบ q=15.123,104.567 หรือ ll=...
+    m = text.match(/[?&](?:q|ll|query|destination)=(-?\d+(?:\.\d+)?)\s*,\s*(-?\d+(?:\.\d+)?)/);
+    if(m) return {lat:+m[1], lng:+m[2]};
+    // พิกัดเปล่า "15.123, 104.567"
+    m = text.match(/^(-?\d+(?:\.\d+)?)\s*,\s*(-?\d+(?:\.\d+)?)$/);
+    if(m) return {lat:+m[1], lng:+m[2]};
+    return null;
+  }
+
+  function gmapsNavUrl(lat,lng){
+    return 'https://www.google.com/maps/dir/?api=1&destination='+lat+','+lng;
+  }
+  function gmapsViewUrl(lat,lng){
+    return 'https://www.google.com/maps?q='+lat+','+lng;
+  }
+
+  // ── หน้าแผนที่ ──
+  window.renderHomeMapPage = function(){
+    var classId = window.AppState.currentClassId;
+    if(!classId){ setTimeout(function(){ window.setView('main'); },0); return ''; }
+    var rm = (window.AppState.classrooms||[]).find(function(r){return r.id===classId});
+    var label = rm ? window.classLabel((window.GRADE_INFO&&window.GRADE_INFO[rm.grade]?window.GRADE_INFO[rm.grade].num:rm.grade), rm.room) : '';
+    setTimeout(initHomeMap, 40);
+    return '<div class="toolbar">'+
+      '<button class="btn-back" data-act="backGrade">← กลับ</button>'+
+      '<h2 class="section-title" style="margin:0"><span class="ico">🗺️</span> แผนที่บ้านนักเรียน '+window.escHTML(label)+'</h2>'+
+      '</div>'+
+      '<div class="hm-hint" id="hmHint">💡 เลือกนักเรียนจากรายชื่อด้านซ้าย แล้ว<b>คลิกบนแผนที่</b>เพื่อปักหมุดบ้าน — หมุดลากย้ายได้ และบันทึกอัตโนมัติ</div>'+
+      '<div class="hm-wrap" style="margin-top:.6rem">'+
+        '<div class="hm-side">'+
+          '<div class="hm-side-head">'+
+            '<input id="hmSearch" placeholder="🔍 ค้นหาชื่อนักเรียน...">'+
+            '<div class="hm-count" id="hmCount"></div>'+
+          '</div>'+
+          '<div class="hm-list" id="hmList"><div style="padding:1rem;text-align:center;color:var(--ink-muted)">กำลังโหลด...</div></div>'+
+        '</div>'+
+        '<div class="hm-mapbox">'+
+          '<div class="hm-toolbar">'+
+            '<input id="hmPaste" placeholder="📋 วางลิงก์ Google Maps หรือพิกัด เช่น 15.2448, 104.8473 แล้วกด Enter">'+
+            '<button class="btn" id="hmGps" title="ใช้ตำแหน่ง GPS ปัจจุบันปักหมุดให้นักเรียนที่เลือก">📡 ตำแหน่งปัจจุบัน</button>'+
+          '</div>'+
+          '<div id="hmMap"><div style="padding:2rem;text-align:center;color:var(--ink-muted)"><div class="spinner" style="margin:0 auto 1rem"></div>กำลังโหลดแผนที่...</div></div>'+
+        '</div>'+
+      '</div>';
+  };
+
+  async function initHomeMap(){
+    var classId = window.AppState.currentClassId;
+    HM.classId = classId; HM.selectedId = null; HM.markers = {};
+    try{
+      HM.students = await window.getStudentsOfClass(classId, true);
+    }catch(e){
+      window.showToast('โหลดข้อมูลนักเรียนไม่สำเร็จ: '+e.message,'error'); return;
+    }
+    renderList('');
+    loadLeaflet(buildMap);
+
+    var search = document.getElementById('hmSearch');
+    if(search) search.oninput = function(){ renderList(this.value); };
+
+    var paste = document.getElementById('hmPaste');
+    if(paste) paste.onkeydown = function(ev){
+      if(ev.key!=='Enter') return;
+      var pos = parseLatLng(this.value);
+      if(!pos){ window.showToast('อ่านพิกัดไม่ได้ — วางลิงก์เต็มจาก Google Maps หรือพิมพ์ "lat, lng" (ลิงก์ย่อ maps.app.goo.gl ใช้ไม่ได้ ให้เปิดลิงก์แล้วคัดลอกจากแถบ URL)','error',6000); return; }
+      if(!HM.selectedId){ window.showToast('กรุณาเลือกนักเรียนจากรายชื่อก่อน','error'); return; }
+      savePin(HM.selectedId, pos.lat, pos.lng);
+      this.value='';
+    };
+
+    var gps = document.getElementById('hmGps');
+    if(gps) gps.onclick = function(){
+      if(!HM.selectedId){ window.showToast('กรุณาเลือกนักเรียนจากรายชื่อก่อน','error'); return; }
+      if(!navigator.geolocation){ window.showToast('อุปกรณ์นี้ไม่รองรับ GPS','error'); return; }
+      window.showToast('กำลังอ่านตำแหน่ง GPS...','info');
+      navigator.geolocation.getCurrentPosition(function(p){
+        savePin(HM.selectedId, p.coords.latitude, p.coords.longitude);
+        if(HM.map) HM.map.setView([p.coords.latitude, p.coords.longitude], 17);
+      }, function(){ window.showToast('อ่านตำแหน่งไม่สำเร็จ — กรุณาอนุญาตการเข้าถึงตำแหน่ง','error'); }, {enableHighAccuracy:true, timeout:12000});
+    };
+  }
+
+  function buildMap(){
+    var el = document.getElementById('hmMap');
+    if(!el || !window.L) return;
+    el.innerHTML = '';
+    HM.map = L.map(el);
+    L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      maxZoom: 19,
+      attribution: '© OpenStreetMap'
+    }).addTo(HM.map);
+
+    // ตั้งมุมมองเริ่มต้น: ครอบหมุดที่มี → ไม่มีหมุดใช้ GPS → ไม่ได้ก็กลางประเทศไทย
+    var pinned = HM.students.filter(hasPin);
+    if(pinned.length){
+      var b = L.latLngBounds(pinned.map(function(s){return [s.homeLat, s.homeLng];}));
+      HM.map.fitBounds(b.pad(0.25));
+    }else{
+      HM.map.setView([15.87, 100.99], 6);
+      if(navigator.geolocation){
+        navigator.geolocation.getCurrentPosition(function(p){
+          HM.map.setView([p.coords.latitude, p.coords.longitude], 14);
+        }, function(){}, {timeout:8000});
+      }
+    }
+
+    HM.map.on('click', function(ev){
+      if(!HM.selectedId){
+        window.showToast('เลือกนักเรียนจากรายชื่อด้านซ้ายก่อน แล้วคลิกแผนที่เพื่อปักหมุด','info',3500);
+        return;
+      }
+      savePin(HM.selectedId, ev.latlng.lat, ev.latlng.lng);
+    });
+
+    HM.students.forEach(function(s){ if(hasPin(s)) addMarker(s); });
+  }
+
+  function pinIcon(sel){
+    return L.divIcon({className:'', html:'<div class="hm-pin'+(sel?' sel':'')+'">'+(sel?'🔴':'📍')+'</div>', iconSize:[26,26], iconAnchor:[13,24]});
+  }
+
+  function addMarker(s){
+    if(HM.markers[s.id]){ HM.map.removeLayer(HM.markers[s.id]); }
+    var mk = L.marker([s.homeLat, s.homeLng], {draggable:true, icon:pinIcon(HM.selectedId===s.id)}).addTo(HM.map);
+    mk.bindTooltip(s.fullName||'', {direction:'top', offset:[0,-22]});
+    mk.bindPopup(popupHtml(s));
+    mk.on('dragend', function(){
+      var ll = mk.getLatLng();
+      savePin(s.id, ll.lat, ll.lng, true);
+    });
+    mk.on('click', function(){ selectStudent(s.id, false); });
+    HM.markers[s.id] = mk;
+  }
+
+  function popupHtml(s){
+    var addr = shortAddr(s);
+    return '<div class="hm-pop"><b>'+window.escHTML(s.fullName||'')+'</b>'+
+      (addr?'<div class="addr">'+window.escHTML(addr)+'</div>':'')+
+      '<div class="row">'+
+        '<a class="nav" target="_blank" rel="noopener" href="'+gmapsNavUrl(s.homeLat,s.homeLng)+'">🧭 นำทาง</a>'+
+        '<button class="del" onclick="window.hmDeletePin(\''+s.id+'\')">🗑 ลบหมุด</button>'+
+      '</div>'+
+      '<div class="row"><a target="_blank" rel="noopener" style="background:#e0e7ff;color:#3730a3" href="'+gmapsViewUrl(s.homeLat,s.homeLng)+'">เปิดใน Google Maps</a></div>'+
+    '</div>';
+  }
+
+  function renderList(filter){
+    var list = document.getElementById('hmList');
+    var count = document.getElementById('hmCount');
+    if(!list) return;
+    var f = (filter||'').trim().toLowerCase();
+    var pinned = HM.students.filter(hasPin).length;
+    if(count) count.textContent = 'ปักหมุดแล้ว '+pinned+' / '+HM.students.length+' คน';
+    var html = '';
+    HM.students.forEach(function(s){
+      var name = (s.fullName||'') + ' ' + (s.nickname||'');
+      if(f && name.toLowerCase().indexOf(f)===-1) return;
+      var p = hasPin(s);
+      html += '<div class="hm-item'+(HM.selectedId===s.id?' sel':'')+'" data-sid="'+s.id+'">'+
+        '<span class="st">'+(p?'📍':'⚪')+'</span>'+
+        '<span class="nm">'+window.escHTML(s.fullName||'')+
+          '<small>'+(p?'ปักหมุดแล้ว':'ยังไม่ปักหมุด')+(s.nickname?' · '+window.escHTML(s.nickname):'')+'</small></span>'+
+        (p?'<button class="nav-btn" data-nav="'+s.id+'" title="นำทางด้วย Google Maps">🧭</button>':'')+
+      '</div>';
+    });
+    list.innerHTML = html || '<div style="padding:1rem;text-align:center;color:var(--ink-muted)">ไม่พบนักเรียน</div>';
+    list.querySelectorAll('.hm-item').forEach(function(el){
+      el.onclick = function(ev){
+        if(ev.target.dataset && ev.target.dataset.nav){
+          var s = HM.students.find(function(x){return x.id===ev.target.dataset.nav});
+          if(s && hasPin(s)) window.open(gmapsNavUrl(s.homeLat,s.homeLng),'_blank');
+          return;
+        }
+        selectStudent(el.dataset.sid, true);
+      };
+    });
+  }
+
+  function selectStudent(sid, panTo){
+    var prev = HM.selectedId;
+    HM.selectedId = sid;
+    // อัปเดตไอคอนหมุดเก่า/ใหม่
+    [prev, sid].forEach(function(id){
+      if(!id) return;
+      var s = HM.students.find(function(x){return x.id===id});
+      if(s && hasPin(s) && HM.markers[id]) HM.markers[id].setIcon(pinIcon(HM.selectedId===id));
+    });
+    var sEl = document.getElementById('hmSearch');
+    renderList(sEl?sEl.value:'');
+    var s = HM.students.find(function(x){return x.id===sid});
+    var hint = document.getElementById('hmHint');
+    if(hint && s){
+      hint.innerHTML = hasPin(s)
+        ? '✏️ <b>'+window.escHTML(s.fullName||'')+'</b> — คลิกแผนที่เพื่อย้ายหมุด หรือลากหมุดได้เลย (บันทึกอัตโนมัติ)'
+        : '📌 <b>'+window.escHTML(s.fullName||'')+'</b> — คลิกตำแหน่งบ้านบนแผนที่เพื่อปักหมุด หรือวางลิงก์ Google Maps ด้านบน';
+    }
+    if(panTo && s && hasPin(s) && HM.map){
+      HM.map.setView([s.homeLat, s.homeLng], Math.max(HM.map.getZoom(), 16));
+      if(HM.markers[sid]) HM.markers[sid].openPopup();
+    }
+  }
+
+  async function savePin(sid, lat, lng, silent){
+    var s = HM.students.find(function(x){return x.id===sid});
+    if(!s) return;
+    lat = Math.round(lat*1e6)/1e6; lng = Math.round(lng*1e6)/1e6;
+    s.homeLat = lat; s.homeLng = lng;
+    addMarker(s);
+    var sEl = document.getElementById('hmSearch');
+    renderList(sEl?sEl.value:'');
+    selectStudent(sid, false);
+    try{
+      // setDoc merge — ทนทานต่อ docId stale เช่นเดียวกับการบันทึกรูป
+      await window.savePhotoRef(HM.classId, sid, {homeLat:lat, homeLng:lng});
+      if(!silent) window.showToast('📍 บันทึกหมุดบ้าน '+(s.fullName||'')+' เรียบร้อย','success');
+    }catch(e){
+      window.showToast('บันทึกหมุดไม่สำเร็จ: '+e.message,'error');
+    }
+  }
+
+  window.hmDeletePin = async function(sid){
+    var s = HM.students.find(function(x){return x.id===sid});
+    if(!s) return;
+    if(!confirm('ลบหมุดบ้านของ '+(s.fullName||'นักเรียนคนนี้')+' ?')) return;
+    s.homeLat = null; s.homeLng = null;
+    if(HM.markers[sid]){ HM.map.removeLayer(HM.markers[sid]); delete HM.markers[sid]; }
+    var sEl = document.getElementById('hmSearch');
+    renderList(sEl?sEl.value:'');
+    try{
+      await window.savePhotoRef(HM.classId, sid, {homeLat:null, homeLng:null});
+      window.showToast('ลบหมุดเรียบร้อย','success');
+    }catch(e){
+      window.showToast('ลบหมุดไม่สำเร็จ: '+e.message,'error');
+    }
   };
 })();
 </script>
