@@ -5604,47 +5604,106 @@ window.deleteStudent = async function(classId, studentDocId){
       renderReady(student, hasPin);
     })();
 
+    // ── ตัวช่วยแปลงพิกัด / ลิงก์แผนที่ (สำเนาเฉพาะหน้านี้) ──
+    function pinViewUrl(lat,lng){ return 'https://www.google.com/maps?q='+lat+','+lng; }
+    function pinParseLatLng(text){
+      if(!text) return null;
+      text = String(text).trim();
+      var m;
+      m = text.match(/!3d(-?\d+(?:\.\d+)?)!4d(-?\d+(?:\.\d+)?)/); if(m) return {lat:+m[1], lng:+m[2]};
+      m = text.match(/@(-?\d+(?:\.\d+)?),\s*(-?\d+(?:\.\d+)?)/);   if(m) return {lat:+m[1], lng:+m[2]};
+      m = text.match(/[?&](?:q|ll|query|destination)=(-?\d+(?:\.\d+)?)\s*,\s*(-?\d+(?:\.\d+)?)/); if(m) return {lat:+m[1], lng:+m[2]};
+      m = text.match(/^(-?\d+(?:\.\d+)?)\s*,\s*(-?\d+(?:\.\d+)?)$/); if(m) return {lat:+m[1], lng:+m[2]};
+      return null;
+    }
+
     function renderReady(student, hasPin){
+      function statusHtml(pinned){
+        return pinned
+          ? '<span style="display:inline-block;background:#dcfce7;color:#15803d;border:1px solid #86efac;border-radius:99px;padding:5px 14px;font-weight:600">✅ ปักหมุดแล้ว</span>'
+          : '<span style="display:inline-block;background:#fef9c3;color:#854d0e;border:1px solid #fde68a;border-radius:99px;padding:5px 14px;font-weight:600">ยังไม่ได้ปักหมุด</span>';
+      }
+      function currentPinHtml(){
+        if(!(typeof student.homeLat==='number' && typeof student.homeLng==='number')) return '';
+        return '<div id="pinCurrent" style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:12px;padding:10px 14px;margin-bottom:1rem;text-align:left;font-size:.9rem;color:#166534;line-height:1.6">'+
+          '📍 ตำแหน่งบ้านที่บันทึกไว้: <strong>'+student.homeLat.toFixed(6)+', '+student.homeLng.toFixed(6)+'</strong><br>'+
+          '<a href="'+pinViewUrl(student.homeLat, student.homeLng)+'" target="_blank" rel="noopener" style="display:inline-block;margin-top:4px;background:#dbeafe;color:#1e40af;border-radius:8px;padding:4px 12px;text-decoration:none;font-weight:600">🗺️ ดูบนแผนที่ Google</a>'+
+        '</div>';
+      }
+
       body.innerHTML =
         '<div style="font-size:46px;line-height:1;margin-bottom:.3rem">🏠</div>'+
         '<div style="font-family:Kanit,sans-serif;font-size:1.4rem;font-weight:700;color:#1f2937">'+window.escHTML(student.fullName||'(ไม่มีชื่อ)')+'</div>'+
         (student.studentId?('<div style="color:#64748b;margin-top:2px">เลขประจำตัว '+window.escHTML(student.studentId)+'</div>'):'')+
-        '<div id="pinStatus" style="margin:14px 0;font-size:.95rem">'+
-          (hasPin
-            ? '<span style="display:inline-block;background:#dcfce7;color:#15803d;border:1px solid #86efac;border-radius:99px;padding:5px 14px;font-weight:600">✅ ปักหมุดแล้ว</span>'
-            : '<span style="display:inline-block;background:#fef9c3;color:#854d0e;border:1px solid #fde68a;border-radius:99px;padding:5px 14px;font-weight:600">ยังไม่ได้ปักหมุด</span>')+
-        '</div>'+
+        '<div id="pinStatus" style="margin:14px 0;font-size:.95rem">'+statusHtml(hasPin)+'</div>'+
+        '<div id="pinCurrentWrap">'+currentPinHtml()+'</div>'+
         '<div style="background:#eff6ff;border:1px solid #bfdbfe;border-radius:12px;padding:12px 14px;color:#1e40af;font-size:.9rem;line-height:1.6;text-align:left;margin-bottom:1rem">'+
           '📌 <strong>วิธีปักหมุด:</strong> ให้ยืนอยู่ที่<strong>บ้านของตนเอง</strong> แล้วกดปุ่มด้านล่าง ระบบจะบันทึกตำแหน่งปัจจุบันเป็นที่ตั้งบ้าน<br>'+
           '<span style="font-size:.85em;color:#3730a3">* โปรดอนุญาตให้เว็บไซต์เข้าถึงตำแหน่ง (Location) เมื่อมีคำถามขึ้น</span>'+
         '</div>'+
-        '<button id="pinBtn" style="width:100%;background:linear-gradient(135deg,#0891b2,#7c3aed);color:#fff;border:none;border-radius:14px;padding:16px;font-size:1.15rem;font-family:Kanit,sans-serif;font-weight:600;cursor:pointer;box-shadow:0 6px 18px rgba(124,58,237,.3)">📍 '+(hasPin?'ปักหมุดบ้านใหม่':'ปักหมุดบ้านของฉัน')+'</button>';
+        '<button id="pinBtn" style="width:100%;background:linear-gradient(135deg,#0891b2,#7c3aed);color:#fff;border:none;border-radius:14px;padding:16px;font-size:1.15rem;font-family:Kanit,sans-serif;font-weight:600;cursor:pointer;box-shadow:0 6px 18px rgba(124,58,237,.3)">📍 '+(hasPin?'ปักหมุดใหม่ (ตำแหน่งปัจจุบัน)':'ปักหมุดบ้านของฉัน')+'</button>'+
+        // ── แก้ไขพิกัดด้วยลิงก์ Google Maps ──
+        '<details style="margin-top:14px;text-align:left">'+
+          '<summary style="cursor:pointer;color:#0891b2;font-weight:600;font-size:.92rem">✏️ แก้ไขหมุดด้วยลิงก์ Google Maps / พิกัด</summary>'+
+          '<div style="margin-top:10px">'+
+            '<div style="font-size:.84rem;color:#64748b;line-height:1.6;margin-bottom:8px">เปิด Google Maps → กดค้างที่ตำแหน่งบ้าน → คัดลอกลิงก์ หรือพิกัด (เช่น <code>15.123, 104.567</code>) มาวางด้านล่าง</div>'+
+            '<input id="pinLinkInput" type="text" placeholder="วางลิงก์ Google Maps หรือพิกัดที่นี่" style="width:100%;border:1px solid #cbd5e1;border-radius:10px;padding:11px 12px;font-family:Sarabun,sans-serif;font-size:.95rem;margin-bottom:8px">'+
+            '<button id="pinLinkBtn" style="width:100%;background:#0e7490;color:#fff;border:none;border-radius:10px;padding:12px;font-size:1rem;font-family:Kanit,sans-serif;font-weight:600;cursor:pointer">💾 บันทึกพิกัดจากลิงก์</button>'+
+          '</div>'+
+        '</details>';
 
+      // ── ตัวบันทึกพิกัดกลาง (ใช้ทั้ง GPS และลิงก์) ──
+      async function doSave(lat, lng){
+        await window.savePhotoRef(classId, student.id, { homeLat: lat, homeLng: lng });
+        student.homeLat = lat; student.homeLng = lng;
+        var stt = body.querySelector('#pinStatus'); if(stt) stt.innerHTML = statusHtml(true);
+        var cw  = body.querySelector('#pinCurrentWrap'); if(cw) cw.innerHTML = currentPinHtml();
+        var b1  = body.querySelector('#pinBtn'); if(b1) b1.textContent = '📍 ปักหมุดใหม่ (ตำแหน่งปัจจุบัน)';
+        pfSwalSuccess('บันทึกแล้ว', 'ระบบบันทึกตำแหน่งบ้านของ '+(student.fullName||'นักเรียน')+' เรียบร้อยแล้ว');
+      }
+
+      // ── ปักหมุด/ปักใหม่ ด้วย GPS ──
       var btn = body.querySelector('#pinBtn');
       btn.onclick = function(){
         if(!navigator.geolocation){ pfSwalError('อุปกรณ์ไม่รองรับ', 'เครื่องนี้ไม่รองรับการระบุตำแหน่ง (GPS)'); return; }
+        var oldText = btn.textContent;
         btn.disabled = true; btn.textContent = '⏳ กำลังระบุตำแหน่ง...';
         navigator.geolocation.getCurrentPosition(async function(pos){
-          var lat = pos.coords.latitude, lng = pos.coords.longitude;
           try{
-            await window.savePhotoRef(classId, student.id, { homeLat: lat, homeLng: lng });
-            student.homeLat = lat; student.homeLng = lng;
-            var stt = body.querySelector('#pinStatus');
-            if(stt) stt.innerHTML = '<span style="display:inline-block;background:#dcfce7;color:#15803d;border:1px solid #86efac;border-radius:99px;padding:5px 14px;font-weight:600">✅ ปักหมุดแล้ว</span>';
-            btn.disabled = false; btn.textContent = '📍 ปักหมุดบ้านใหม่';
-            pfSwalSuccess('บันทึกแล้ว', 'ระบบบันทึกตำแหน่งบ้านของ '+(student.fullName||'นักเรียน')+' เรียบร้อยแล้ว');
+            await doSave(pos.coords.latitude, pos.coords.longitude);
+            btn.disabled = false; btn.textContent = '📍 ปักหมุดใหม่ (ตำแหน่งปัจจุบัน)';
           }catch(e){
             btn.disabled = false; btn.textContent = '📍 ลองอีกครั้ง';
             pfSwalError('บันทึกไม่สำเร็จ', e.message);
           }
         }, function(err){
-          btn.disabled = false; btn.textContent = '📍 ปักหมุดบ้านของฉัน';
+          btn.disabled = false; btn.textContent = oldText;
           var msg = 'ไม่สามารถระบุตำแหน่งได้';
           if(err && err.code===1) msg = 'ยังไม่ได้อนุญาตให้เข้าถึงตำแหน่ง — โปรดอนุญาตแล้วลองใหม่';
           else if(err && err.code===2) msg = 'หาตำแหน่งไม่พบ — โปรดตรวจสอบสัญญาณ GPS/อินเทอร์เน็ต';
           else if(err && err.code===3) msg = 'หมดเวลาในการระบุตำแหน่ง — ลองใหม่อีกครั้ง';
           pfSwalError('ปักหมุดไม่สำเร็จ', msg);
         }, { enableHighAccuracy:true, timeout:15000, maximumAge:0 });
+      };
+
+      // ── แก้ไขด้วยลิงก์ Google Maps / พิกัด ──
+      var linkBtn = body.querySelector('#pinLinkBtn');
+      var linkInput = body.querySelector('#pinLinkInput');
+      linkBtn.onclick = async function(){
+        var parsed = pinParseLatLng(linkInput.value);
+        if(!parsed || !isFinite(parsed.lat) || !isFinite(parsed.lng) ||
+           parsed.lat<-90 || parsed.lat>90 || parsed.lng<-180 || parsed.lng>180){
+          pfSwalError('ลิงก์/พิกัดไม่ถูกต้อง', 'กรุณาวางลิงก์ Google Maps หรือพิกัดในรูปแบบ 15.123, 104.567');
+          return;
+        }
+        linkBtn.disabled = true; linkBtn.textContent = '⏳ กำลังบันทึก...';
+        try{
+          await doSave(parsed.lat, parsed.lng);
+          linkInput.value = '';
+        }catch(e){
+          pfSwalError('บันทึกไม่สำเร็จ', e.message);
+        }
+        linkBtn.disabled = false; linkBtn.textContent = '💾 บันทึกพิกัดจากลิงก์';
       };
     }
   };
