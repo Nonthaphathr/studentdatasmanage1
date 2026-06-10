@@ -2646,9 +2646,9 @@ window.deleteStudent = async function(classId, studentDocId){
       '<button class="btn btn-primary" id="stPublicForm">🔗 จัดการลิงก์ฟอร์ม + QR Code</button>'+
       '</div>'+
 
-      '<div class="set-section"><h4>🧩 QR Code กรอกฟอร์มเฉพาะข้อมูลที่ยังขาด</h4>'+
-      '<p class="muted">เลือกห้องที่มีนักเรียนอยู่แล้วในระบบ — ระบบจะสร้างเอกสาร QR Code <strong>1 คน ต่อ 1 QR</strong> (ผูกกับเลขบัตรประชาชน) เมื่อนักเรียนสแกนจะเห็นข้อมูลเดิมของตนและกรอกเฉพาะช่องที่ยังว่างหรือระบุว่า "ไม่ทราบ" เพื่อเติมเข้าข้อมูลที่มีอยู่</p>'+
-      '<button class="btn btn-primary" id="stMissingQr" style="background:linear-gradient(135deg,#0891b2,#7c3aed)">🧩 สร้าง QR เติมข้อมูลที่ยังขาด</button>'+
+      '<div class="set-section"><h4>🧩 QR Code เติมข้อมูลที่ยังขาด + 📍 ปักหมุดบ้าน</h4>'+
+      '<p class="muted">เลือกห้องที่มีนักเรียนอยู่แล้วในระบบ — ระบบจะสร้างเอกสาร QR Code <strong>1 คน ต่อ 1 การ์ด</strong> โดยในการ์ดเดียวกันจะมี QR 2 อัน: <strong>🧩 เติมข้อมูลที่ขาด</strong> และ <strong>📍 ปักหมุดบ้าน</strong> (นักเรียนยืนที่บ้านแล้วกดปักหมุด พิกัดจะไปแสดงในเมนู "แผนที่บ้านนักเรียน" อัตโนมัติ) — ผูกกับเลขบัตรประชาชนของแต่ละคน</p>'+
+      '<button class="btn btn-primary" id="stMissingQr" style="background:linear-gradient(135deg,#0891b2,#7c3aed)">🧩 สร้าง QR เติมข้อมูล + ปักหมุดบ้าน</button>'+
       '</div>'+
 
       '<div class="set-section"><h4>🔧 ซ่อมข้อมูลบ้านเลขที่ที่ Excel แปลงเป็นวันที่</h4>'+
@@ -3537,12 +3537,8 @@ window.deleteStudent = async function(classId, studentDocId){
         var raw = s.raw || {};
         var nid = String(raw['เลขบัตรนักเรียน']||'').replace(/[^0-9]/g,'');
         var sid = String(s.studentId||'').trim();
-        // คำนวณรายการที่ยังขาด
-        var missingLabels = [];
-        checks.forEach(function(ck){
-          var anyMissing = ck.keys.some(function(k){ return isMissing(raw[k]); });
-          if(anyMissing) missingLabels.push(ck.label);
-        });
+        // คำนวณรายการที่ยังขาด (ใช้ตรรกะเดียวกับฟอร์มเป๊ะ — แตกชื่อรวมก่อนเช็ค)
+        var missingLabels = window.PF_getMissingLabels(raw);
         var missCount = missingLabels.length;
 
         // สร้างลิงก์ (ผูกกับเลขบัตรประชาชนก่อน, ถ้าไม่มีใช้เลขประจำตัว)
@@ -3553,8 +3549,13 @@ window.deleteStudent = async function(classId, studentDocId){
         else if(sid) p.push('sid='+encodeURIComponent(sid));
         var formUrl = baseUrl + '#form?' + p.join('&');
         var qr = canBind ? ('https://api.qrserver.com/v1/create-qr-code/?size=500x500&margin=10&data=' + encodeURIComponent(formUrl)) : '';
-
-        var missHtml;
+        // QR ปักหมุดบ้าน (โหมด pin) — ใช้ลิงก์เดียวกันแต่เปลี่ยน mode
+        var pp = ['mode=pin', 'grade='+grade, 'year='+year];
+        if(room) pp.push('room='+encodeURIComponent(room));
+        if(nid) pp.push('nid='+encodeURIComponent(nid));
+        else if(sid) pp.push('sid='+encodeURIComponent(sid));
+        var pinUrl = baseUrl + '#form?' + pp.join('&');
+        var qrPin = canBind ? ('https://api.qrserver.com/v1/create-qr-code/?size=500x500&margin=10&data=' + encodeURIComponent(pinUrl)) : '';
         if(missCount===0){
           missHtml = '<div class="hc-complete">✅ ข้อมูลครบถ้วน</div>';
         } else {
@@ -3572,11 +3573,14 @@ window.deleteStudent = async function(classId, studentDocId){
             '<div class="hc-name">'+window.escHTML(s.fullName||'(ไม่มีชื่อ)')+'</div>'+
             '<div class="hc-sub">เลขประจำตัว '+window.escHTML(sid||'—')+(s.order?(' &nbsp;•&nbsp; ลำดับที่ '+s.order):'')+'</div>'+
             missHtml+
-            '<div class="hc-tip">สแกน QR ด้านขวา → กรอกเฉพาะช่องที่ยังขาด → กดบันทึก</div>'+
+            '<div class="hc-tip">🧩 QR ซ้าย = เติมข้อมูลที่ขาด &nbsp;•&nbsp; 📍 QR ขวา = ปักหมุดบ้าน (ยืนที่บ้านแล้วกดปักหมุด)</div>'+
           '</div>'+
           '<div class="hc-qr">'+
             (canBind
-              ? '<img src="'+qr+'" alt="QR" crossorigin="anonymous"><div class="hc-scan">สแกนเพื่อเติมข้อมูล</div>'
+              ? '<div class="hc-qr-pair">'+
+                  '<div class="hc-qr-item"><img src="'+qr+'" alt="QR เติมข้อมูล" crossorigin="anonymous"><div class="hc-scan">🧩 เติมข้อมูล</div></div>'+
+                  '<div class="hc-qr-item"><img src="'+qrPin+'" alt="QR ปักหมุดบ้าน" crossorigin="anonymous"><div class="hc-scan">📍 ปักหมุดบ้าน</div></div>'+
+                '</div>'
               : '<div class="hc-noqr">⚠️ ผูก QR ไม่ได้<br><small>ไม่มีเลขบัตร/เลขประจำตัว</small></div>')+
           '</div>';
       });
@@ -3593,7 +3597,7 @@ window.deleteStudent = async function(classId, studentDocId){
       }
 
       var html = '<!DOCTYPE html><html lang="th"><head><meta charset="UTF-8">'+
-        '<title>QR เติมข้อมูล — '+window.escHTML(clsLbl)+' — '+window.escHTML(schoolName)+'</title>'+
+        '<title>QR เติมข้อมูล + ปักหมุดบ้าน — '+window.escHTML(clsLbl)+' — '+window.escHTML(schoolName)+'</title>'+
         '<link rel="preconnect" href="https://fonts.googleapis.com">'+
         '<link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@400;500;600;700&family=Kanit:wght@500;600;700;800&display=swap" rel="stylesheet">'+
         '<style>'+
@@ -3622,13 +3626,15 @@ window.deleteStudent = async function(classId, studentDocId){
           '.hc-complete{font-size:11pt;color:#15803d;font-weight:600}'+
           '.hc-tip{font-size:9pt;color:#0369a1;background:#ecfeff;border:1px solid #bae6fd;border-radius:6px;padding:4px 9px;align-self:flex-start}'+
           '.hc-qr{flex-shrink:0;text-align:center}'+
-          '.hc-qr img{width:62mm;height:62mm;background:#fff;image-rendering:crisp-edges}'+
-          '.hc-scan{font-size:10pt;color:#374151;margin-top:3px;font-weight:500}'+
+          '.hc-qr-pair{display:flex;gap:7mm;align-items:flex-start}'+
+          '.hc-qr-item{text-align:center}'+
+          '.hc-qr img{width:46mm;height:46mm;background:#fff;image-rendering:crisp-edges}'+
+          '.hc-scan{font-size:9pt;color:#374151;margin-top:3px;font-weight:600}'+
           '.hc-noqr{font-size:9pt;color:#b91c1c;border:1px dashed #fca5a5;border-radius:8px;padding:14mm 8mm;width:62mm}'+
           '@media print{body{background:#fff}.toolbar{display:none}.wrap{padding:0}.page{box-shadow:none;margin:0;width:auto;height:100vh}}'+
         '</style></head><body>'+
         '<div class="toolbar">'+
-          '<h2>🧩 QR เติมข้อมูล — '+window.escHTML(clsLbl)+' (แนวนอน หน้าละ 2 คน)</h2>'+
+          '<h2>🧩 QR เติมข้อมูล + 📍 ปักหมุดบ้าน — '+window.escHTML(clsLbl)+' (หน้าละ 2 คน)</h2>'+
           '<button onclick="window.print()">🖨️ พิมพ์</button>'+
           '<button class="cl" onclick="window.close()">← ปิด</button>'+
         '</div>'+
@@ -5460,6 +5466,44 @@ window.deleteStudent = async function(classId, studentDocId){
     {label:'การเดินทาง', keys:['การเดินทาง','ระยะทาง(กม.)']}
   ];
 
+  // ── แตกชื่อรวม (บิดา/มารดา/ผู้ปกครอง) → คำนำหน้า/ชื่อ/สกุล ถ้ายังไม่มี ──
+  // ใช้ร่วมกันทั้ง "เอกสาร QR (สรุปยังขาด)" และ "ฟอร์ม (ไฮไลต์ช่องที่ขาด)" ให้ตรงกันเป๊ะ
+  window.PF_deriveRaw = function(raw){
+    var praw = Object.assign({}, raw||{});
+    function derive(combinedKey, prefixKey, firstKey, lastKey, prefixList){
+      if(praw[firstKey] && String(praw[firstKey]).trim()) return;
+      var c = String(praw[combinedKey]||'').trim();
+      if(!c) return;
+      var pfx='', rest=c;
+      for(var i=0;i<prefixList.length;i++){ if(c.indexOf(prefixList[i])===0){ pfx=prefixList[i]; rest=c.slice(prefixList[i].length); break; } }
+      rest = rest.trim();
+      var sp = rest.indexOf(' ');
+      if(!praw[prefixKey]) praw[prefixKey] = pfx;
+      praw[firstKey] = sp>=0 ? rest.slice(0,sp) : rest;
+      praw[lastKey] = sp>=0 ? rest.slice(sp+1).trim() : '';
+    }
+    derive('ชื่อ-สกุลบิดา','คำนำหน้าบิดา','ชื่อบิดา','นามสกุลบิดา',['นาย','ดร.','ผศ.','รศ.','ศ.']);
+    derive('ชื่อ-สกุลมารดา','คำนำหน้ามารดา','ชื่อมารดา','นามสกุลมารดา',['นางสาว','นาง','ดร.','ผศ.','รศ.','ศ.']);
+    derive('ชื่อผู้ปกครอง','คำนำหน้าผู้ปกครอง','ชื่อจริงผู้ปกครอง','นามสกุลผู้ปกครอง',['นาย','นางสาว','นาง','ดร.','ผศ.','รศ.','ศ.']);
+    return praw;
+  };
+
+  // ── คืนรายการกลุ่มที่ "ยังขาด" (ใช้ตรรกะเดียวกับฟอร์มเป๊ะ) ──
+  window.PF_getMissingLabels = function(raw){
+    var praw = window.PF_deriveRaw(raw);
+    var isMissing = window.PF_isMissing;
+    return (window.PF_MISSING_CHECK||[]).filter(function(ck){
+      return ck.keys.some(function(k){ return isMissing(praw[k]); });
+    }).map(function(ck){ return ck.label; });
+  };
+
+  // ── สร้าง lookup: คีย์ raw → id ของช่องในฟอร์ม (จาก PF_FIELD_MAP) ──
+  window.PF_keyToFieldId = function(){
+    var m = {};
+    (window.PF_FIELD_MAP||[]).forEach(function(f){ if(f.key && f.id) m[f.key] = f.id; });
+    return m;
+  };
+
   // Parse hash params: #form?grade=m1&room=1&year=2569
   function parseHashParams(){
     var hash = location.hash || '';
@@ -5473,6 +5517,138 @@ window.deleteStudent = async function(classId, studentDocId){
     });
     return params;
   }
+
+  // ═══════════════════════════════════════════════════════════════
+  //  โหมดปักหมุดบ้าน (สาธารณะ) — นักเรียนสแกน QR → เห็นชื่อ → กดปักหมุด → จบ
+  //  บันทึก homeLat/homeLng ลงระเบียนนักเรียน (ใช้ร่วมกับแผนที่บ้านฝั่งครู)
+  // ═══════════════════════════════════════════════════════════════
+
+  // โหลด SweetAlert2 (จาก cdnjs) ครั้งเดียว — มี fallback ถ้าโหลดไม่ได้
+  window.PF_ensureSwal = function(cb){
+    if(window.Swal){ cb(); return; }
+    if(window.PF_ensureSwal._loading){ window.PF_ensureSwal._cbs.push(cb); return; }
+    window.PF_ensureSwal._loading = true; window.PF_ensureSwal._cbs = [cb];
+    var css = document.createElement('link'); css.rel='stylesheet';
+    css.href='https://cdnjs.cloudflare.com/ajax/libs/sweetalert2/11.10.7/sweetalert2.min.css';
+    document.head.appendChild(css);
+    var js = document.createElement('script');
+    js.src='https://cdnjs.cloudflare.com/ajax/libs/sweetalert2/11.10.7/sweetalert2.all.min.js';
+    js.onload = function(){ window.PF_ensureSwal._cbs.forEach(function(f){f();}); };
+    js.onerror = function(){ window.PF_ensureSwal._cbs.forEach(function(f){f();}); }; // fallback จะใช้ alert ธรรมดา
+    document.head.appendChild(js);
+  };
+  function pfSwalSuccess(title, text){
+    if(window.Swal){
+      window.Swal.fire({icon:'success', title:title, text:text||'', confirmButtonText:'ตกลง', confirmButtonColor:'#16a34a'});
+    } else {
+      // fallback: กล่องข้อความเรียบง่าย
+      var ov = document.createElement('div');
+      ov.style.cssText='position:fixed;inset:0;background:rgba(15,23,42,.55);display:flex;align-items:center;justify-content:center;z-index:99999';
+      ov.innerHTML='<div style="background:#fff;border-radius:18px;padding:28px 26px;max-width:320px;text-align:center;font-family:Sarabun,sans-serif;box-shadow:0 20px 50px rgba(0,0,0,.25)">'+
+        '<div style="font-size:48px;line-height:1">✅</div>'+
+        '<div style="font-family:Kanit,sans-serif;font-size:1.25rem;font-weight:700;color:#15803d;margin:8px 0 4px">'+window.escHTML(title)+'</div>'+
+        '<div style="color:#475569;font-size:.95rem;margin-bottom:16px">'+window.escHTML(text||'')+'</div>'+
+        '<button style="background:#16a34a;color:#fff;border:none;border-radius:10px;padding:10px 28px;font-size:1rem;font-family:Kanit,sans-serif;cursor:pointer">ตกลง</button>'+
+        '</div>';
+      ov.querySelector('button').onclick=function(){ ov.remove(); };
+      document.body.appendChild(ov);
+    }
+  }
+  function pfSwalError(title, text){
+    if(window.Swal){ window.Swal.fire({icon:'error', title:title, text:text||'', confirmButtonText:'ปิด', confirmButtonColor:'#dc2626'}); }
+    else { window.showToast((title||'')+(text?(' — '+text):''),'error',5000); }
+  }
+
+  window.renderPinHomePage = function(opts){
+    var root = opts.root;
+    var logo = opts.logo, schoolName = opts.schoolName, clsLbl = opts.clsLbl, year = opts.year;
+    var classId = opts.classId, nid = opts.nid, sid = opts.sid;
+    window.PF_ensureSwal(function(){}); // โหลดเตรียมไว้
+
+    document.title = 'ปักหมุดบ้านนักเรียน — '+schoolName;
+    root.innerHTML =
+      '<div class="pf-wrap">'+
+        '<div class="pf-head">'+
+          '<img src="'+window.escHTML(logo)+'" alt="" onerror="this.style.display=\'none\'">'+
+          '<h1>📍 ปักหมุดบ้านนักเรียน</h1>'+
+          '<div class="pf-school">'+window.escHTML(schoolName)+'</div>'+
+          '<div class="pf-class">'+window.escHTML(clsLbl)+' &nbsp;•&nbsp; ปีการศึกษา '+year+'</div>'+
+        '</div>'+
+        '<div class="pf-card" id="pinCard" style="text-align:center">'+
+          '<div id="pinBody" style="padding:1rem 0;color:#475569">⏳ กำลังโหลดข้อมูล...</div>'+
+        '</div>'+
+      '</div>';
+
+    var body = root.querySelector('#pinBody');
+
+    (async function(){
+      var student = null;
+      try{
+        var list = await window.getStudentsOfClass(classId, true);
+        if(nid){
+          student = list.find(function(x){ return String((x.raw&&x.raw['เลขบัตรนักเรียน'])||'').replace(/[^0-9]/g,'')===nid; });
+        }
+        if(!student && sid){
+          student = list.find(function(x){ return String(x.studentId||'').trim()===sid; });
+        }
+      }catch(e){
+        body.innerHTML = '<div style="color:#b91c1c;line-height:1.7">โหลดข้อมูลไม่สำเร็จ<br><small>'+window.escHTML(e.message)+'</small><br>กรุณาลองใหม่อีกครั้ง</div>';
+        return;
+      }
+      if(!student){
+        body.innerHTML = '<div style="color:#b91c1c;line-height:1.7"><div style="font-size:40px">⚠️</div>ไม่พบข้อมูลนักเรียนที่ตรงกับ QR นี้<br>ในห้อง <strong>'+window.escHTML(clsLbl)+'</strong> ปีการศึกษา '+year+'<br><small>กรุณาติดต่อครูที่ปรึกษา</small></div>';
+        return;
+      }
+
+      var hasPin = (typeof student.homeLat==='number' && typeof student.homeLng==='number');
+      renderReady(student, hasPin);
+    })();
+
+    function renderReady(student, hasPin){
+      body.innerHTML =
+        '<div style="font-size:46px;line-height:1;margin-bottom:.3rem">🏠</div>'+
+        '<div style="font-family:Kanit,sans-serif;font-size:1.4rem;font-weight:700;color:#1f2937">'+window.escHTML(student.fullName||'(ไม่มีชื่อ)')+'</div>'+
+        (student.studentId?('<div style="color:#64748b;margin-top:2px">เลขประจำตัว '+window.escHTML(student.studentId)+'</div>'):'')+
+        '<div id="pinStatus" style="margin:14px 0;font-size:.95rem">'+
+          (hasPin
+            ? '<span style="display:inline-block;background:#dcfce7;color:#15803d;border:1px solid #86efac;border-radius:99px;padding:5px 14px;font-weight:600">✅ ปักหมุดแล้ว</span>'
+            : '<span style="display:inline-block;background:#fef9c3;color:#854d0e;border:1px solid #fde68a;border-radius:99px;padding:5px 14px;font-weight:600">ยังไม่ได้ปักหมุด</span>')+
+        '</div>'+
+        '<div style="background:#eff6ff;border:1px solid #bfdbfe;border-radius:12px;padding:12px 14px;color:#1e40af;font-size:.9rem;line-height:1.6;text-align:left;margin-bottom:1rem">'+
+          '📌 <strong>วิธีปักหมุด:</strong> ให้ยืนอยู่ที่<strong>บ้านของตนเอง</strong> แล้วกดปุ่มด้านล่าง ระบบจะบันทึกตำแหน่งปัจจุบันเป็นที่ตั้งบ้าน<br>'+
+          '<span style="font-size:.85em;color:#3730a3">* โปรดอนุญาตให้เว็บไซต์เข้าถึงตำแหน่ง (Location) เมื่อมีคำถามขึ้น</span>'+
+        '</div>'+
+        '<button id="pinBtn" style="width:100%;background:linear-gradient(135deg,#0891b2,#7c3aed);color:#fff;border:none;border-radius:14px;padding:16px;font-size:1.15rem;font-family:Kanit,sans-serif;font-weight:600;cursor:pointer;box-shadow:0 6px 18px rgba(124,58,237,.3)">📍 '+(hasPin?'ปักหมุดบ้านใหม่':'ปักหมุดบ้านของฉัน')+'</button>';
+
+      var btn = body.querySelector('#pinBtn');
+      btn.onclick = function(){
+        if(!navigator.geolocation){ pfSwalError('อุปกรณ์ไม่รองรับ', 'เครื่องนี้ไม่รองรับการระบุตำแหน่ง (GPS)'); return; }
+        btn.disabled = true; btn.textContent = '⏳ กำลังระบุตำแหน่ง...';
+        navigator.geolocation.getCurrentPosition(async function(pos){
+          var lat = pos.coords.latitude, lng = pos.coords.longitude;
+          try{
+            await window.savePhotoRef(classId, student.id, { homeLat: lat, homeLng: lng });
+            student.homeLat = lat; student.homeLng = lng;
+            var stt = body.querySelector('#pinStatus');
+            if(stt) stt.innerHTML = '<span style="display:inline-block;background:#dcfce7;color:#15803d;border:1px solid #86efac;border-radius:99px;padding:5px 14px;font-weight:600">✅ ปักหมุดแล้ว</span>';
+            btn.disabled = false; btn.textContent = '📍 ปักหมุดบ้านใหม่';
+            pfSwalSuccess('บันทึกแล้ว', 'ระบบบันทึกตำแหน่งบ้านของ '+(student.fullName||'นักเรียน')+' เรียบร้อยแล้ว');
+          }catch(e){
+            btn.disabled = false; btn.textContent = '📍 ลองอีกครั้ง';
+            pfSwalError('บันทึกไม่สำเร็จ', e.message);
+          }
+        }, function(err){
+          btn.disabled = false; btn.textContent = '📍 ปักหมุดบ้านของฉัน';
+          var msg = 'ไม่สามารถระบุตำแหน่งได้';
+          if(err && err.code===1) msg = 'ยังไม่ได้อนุญาตให้เข้าถึงตำแหน่ง — โปรดอนุญาตแล้วลองใหม่';
+          else if(err && err.code===2) msg = 'หาตำแหน่งไม่พบ — โปรดตรวจสอบสัญญาณ GPS/อินเทอร์เน็ต';
+          else if(err && err.code===3) msg = 'หมดเวลาในการระบุตำแหน่ง — ลองใหม่อีกครั้ง';
+          pfSwalError('ปักหมุดไม่สำเร็จ', msg);
+        }, { enableHighAccuracy:true, timeout:15000, maximumAge:0 });
+      };
+    }
+  };
+
 
   window.bootPublicForm = function(){
     var params = parseHashParams();
@@ -5495,6 +5671,15 @@ window.deleteStudent = async function(classId, studentDocId){
     var root = document.getElementById('publicForm');
     root.style.display = 'block';
     document.title = 'แบบฟอร์มกรอกข้อมูลนักเรียน — '+schoolName;
+
+    // ── โหมดปักหมุดบ้าน (นักเรียนสแกน QR → กดปักหมุด → จบ) ──
+    if(params.mode === 'pin'){
+      window.renderPinHomePage({
+        root: root, logo: logo, schoolName: schoolName, clsLbl: clsLbl,
+        year: year, classId: fillClassId, nid: fillNid, sid: fillSid
+      });
+      return;
+    }
 
     function renderForm(){
       root.innerHTML =
@@ -5955,25 +6140,10 @@ window.deleteStudent = async function(classId, studentDocId){
         lbl.appendChild(b);
       }
     }
-    function deriveName(praw, combinedKey, prefixKey, firstKey, lastKey, prefixList){
-      if(praw[firstKey] && String(praw[firstKey]).trim()) return;
-      var c = String(praw[combinedKey]||'').trim();
-      if(!c) return;
-      var pfx='', rest=c;
-      for(var i=0;i<prefixList.length;i++){ if(c.indexOf(prefixList[i])===0){ pfx=prefixList[i]; rest=c.slice(prefixList[i].length); break; } }
-      rest = rest.trim();
-      var sp = rest.indexOf(' ');
-      if(!praw[prefixKey]) praw[prefixKey] = pfx;
-      praw[firstKey] = sp>=0 ? rest.slice(0,sp) : rest;
-      praw[lastKey] = sp>=0 ? rest.slice(sp+1).trim() : '';
-    }
     function prefillStudent(s){
       var orig = s.raw || {};
-      var praw = Object.assign({}, orig); // สำเนาสำหรับแสดงผล (ไม่กระทบ baseline ตอน merge)
-      // เติมชื่อย่อย จากชื่อรวม ถ้ายังไม่มี
-      deriveName(praw,'ชื่อ-สกุลบิดา','คำนำหน้าบิดา','ชื่อบิดา','นามสกุลบิดา',['นาย','ดร.','ผศ.','รศ.','ศ.']);
-      deriveName(praw,'ชื่อ-สกุลมารดา','คำนำหน้ามารดา','ชื่อมารดา','นามสกุลมารดา',['นางสาว','นาง','ดร.','ผศ.','รศ.','ศ.']);
-      deriveName(praw,'ชื่อผู้ปกครอง','คำนำหน้าผู้ปกครอง','ชื่อจริงผู้ปกครอง','นามสกุลผู้ปกครอง',['นาย','นางสาว','นาง','ดร.','ผศ.','รศ.','ศ.']);
+      // ใช้ตัวแตกชื่อกลาง (เหมือนเอกสาร QR เป๊ะ) → ฟอร์มและเอกสารจะตรงกัน
+      var praw = window.PF_deriveRaw(orig);
 
       // ชื่อนักเรียน → คำนำหน้า/ชื่อ/สกุล
       var fn = s.fullName || praw['ชื่อ-สกุลนักเรียน'] || '';
@@ -5993,9 +6163,16 @@ window.deleteStudent = async function(classId, studentDocId){
         if(f.id==='pfBirthMonth') v = normMonth(v) || v; // แปลงเดือนให้ตรง option
         fillSetVal(f.id, v);
       });
-      // ไฮไลต์ช่องที่ยังขาด (ใช้ค่าจริงจากระบบ)
-      (window.PF_FIELD_MAP||[]).forEach(function(f){
-        if(window.PF_isMissing(praw[f.key])) fillMark(f.id);
+      // ── ไฮไลต์ช่องที่ยังขาด ── ใช้ "กลุ่มเดียวกับเอกสาร QR" (PF_MISSING_CHECK)
+      // เพื่อให้รายการที่เอกสารบอกว่าขาด ตรงกับช่องที่ถูกไฮไลต์ในฟอร์ม
+      var k2id = window.PF_keyToFieldId();
+      (window.PF_MISSING_CHECK||[]).forEach(function(ck){
+        ck.keys.forEach(function(key){
+          if(window.PF_isMissing(praw[key])){
+            var fid = k2id[key];
+            if(fid) fillMark(fid);
+          }
+        });
       });
     }
 
