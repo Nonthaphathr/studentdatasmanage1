@@ -1112,6 +1112,7 @@ window.deleteStudent = async function(classId, studentDocId){
     else if(act==='gotoPrint'){ openPrintWindow(window.AppState.currentClassId); }
     else if(act==='importFile'){ openImportDialog(window.AppState.currentClassId); }
     else if(act==='bulkImport'){ window.openBulkImportDialog(); }
+    else if(act==='lecImport'){ window.openLECImportDialog(); }
     else if(act==='exportFile'){ exportCurrentClassroom(); }
     else if(act==='deleteRoom'){ confirmDeleteRoom(window.AppState.currentClassId); }
     else if(act==='editAdvisors'){ openAdvisorsForClass(window.AppState.currentClassId); }
@@ -1173,7 +1174,10 @@ window.deleteStudent = async function(classId, studentDocId){
     html += '<div class="toolbar">';
     html += '<button class="btn-back" data-act="backMain">← กลับหน้าหลัก</button>';
     html += '<h2 class="section-title" style="margin:0;color:'+info.color+'"><span class="ico">'+info.icon+'</span> ชั้นมัธยมศึกษาปีที่ '+info.num+'</h2>';
-    html += '<button class="btn btn-primary" data-act="bulkImport" style="margin-left:auto;white-space:nowrap">📥 Import ทั้งหมดครั้งเดียว</button>';
+    html += '<div style="margin-left:auto;display:flex;gap:.5rem;flex-wrap:wrap">';
+    html += '<button class="btn" data-act="lecImport" style="white-space:nowrap">📥 Import ข้อมูลจาก LEC</button>';
+    html += '<button class="btn btn-primary" data-act="bulkImport" style="white-space:nowrap">📥 Import ทั้งหมดครั้งเดียว</button>';
+    html += '</div>';
     html += '</div>';
 
     html += '<div class="room-tabs" style="--accent:'+info.color+'">';
@@ -1276,6 +1280,7 @@ window.deleteStudent = async function(classId, studentDocId){
     html += '<thead><tr>';
     var cols=[
       {k:'order',label:'ลำดับ'},
+      {k:'__photo',label:'รูป'},
       {k:'studentId',label:'เลขประจำตัว'},
       {k:'fullName',label:'ชื่อ-สกุล'},
       {k:'nickname',label:'ชื่อเล่น'},
@@ -1285,9 +1290,10 @@ window.deleteStudent = async function(classId, studentDocId){
     ];
     cols.forEach(function(c){
       if(c.k==='__action') html += '<th></th>';
+      else if(c.k==='__photo') html += '<th style="text-align:center">'+c.label+'</th>';
       else html += '<th class="sortable" data-sort="'+c.k+'">'+c.label+'</th>';
     });
-    html += '</tr></thead><tbody id="stuTbody"><tr><td colspan="7" class="text-center muted" style="padding:2rem">กำลังโหลด...</td></tr></tbody>';
+    html += '</tr></thead><tbody id="stuTbody"><tr><td colspan="8" class="text-center muted" style="padding:2rem">กำลังโหลด...</td></tr></tbody>';
     html += '</table></div>';
     html += '<div class="tbl-foot"><div id="stuStat" class="muted">—</div><div class="pager" id="stuPager"></div></div>';
     html += '</div>';
@@ -2020,6 +2026,444 @@ window.deleteStudent = async function(classId, studentDocId){
         window.showToast(msg, 'success', 5000);
         close();
       } catch(e){
+        window.showLoading(false);
+        console.error(e);
+        window.showToast('นำเข้าผิดพลาด: '+e.message, 'error');
+      }
+    };
+  };
+
+
+  // ═══════════════════════════════════════════════════════════════
+  //  IMPORT จาก LEC (RPT318 — รายงานรายละเอียดข้อมูลนักเรียน อปท.)
+  //  ไฟล์ .xls หัวตาราง 2 แถว (แถว 0=ชื่อรายงาน, 1-2=หัวคอลัมน์, 3+=ข้อมูล)
+  //  อ่านตามตำแหน่งคอลัมน์คงที่ของแบบฟอร์มราชการ แล้ว map เข้าคีย์ของระบบ
+  // ═══════════════════════════════════════════════════════════════
+
+  // ดึงค่าจาก cell ของ SheetJS ตาม row/col (เก็บ leading zero / เลขบัตร)
+  function lecCellAt(ws, r, c){
+    var addr = XLSX.utils.encode_cell({r:r, c:c});
+    var cell = ws[addr];
+    if(!cell) return '';
+    var v = (cell.w!=null ? cell.w : cell.v);
+    return window.cleanExcelValue(v==null ? '' : v);
+  }
+
+  // map "มัธยมศึกษาปีที่ X" → 'mX'
+  function lecGrade(s){
+    s = String(s||'').trim();
+    s = s.replace(/[๐-๙]/g, function(ch){ return String('๐๑๒๓๔๕๖๗๘๙'.indexOf(ch)); });
+    var m = s.match(/([1-6])/);
+    return m ? ('m'+m[1]) : null;
+  }
+  // ห้องเรียน "1.0" → "1" ; ว่าง → ''
+  function lecRoom(s){
+    s = String(s==null?'':s).trim();
+    if(!s) return '';
+    var m = s.match(/^(\d+)(?:\.0+)?$/);
+    return m ? m[1] : s;
+  }
+  function lecGender(s){
+    s = String(s||'').trim();
+    if(s.indexOf('ชาย')>=0) return 'ชาย';
+    if(s.indexOf('หญิง')>=0) return 'หญิง';
+    return 'ไม่ระบุ';
+  }
+  // รวมคำนำหน้า+ชื่อ+สกุล เป็น "ชื่อ-สกุล" (ตัดช่องว่างซ้ำ)
+  function lecJoinName(prefix, first, last){
+    return [String(prefix||'').trim(), String(first||'').trim(), String(last||'').trim()]
+      .filter(Boolean).join(' ').replace(/\s+/g,' ').trim();
+  }
+
+  // ── อ่านไฟล์ LEC → [{grade, room, student}] ──
+  // student = {studentId, fullName, gender, phone, raw:{...คีย์ระบบ}}
+  window.readLECFile = function(file){
+    return new Promise(function(resolve, reject){
+      var fr = new FileReader();
+      fr.onerror = function(){ reject(new Error('อ่านไฟล์ไม่ได้')); };
+      fr.onload = function(e){
+        try{
+          var data = new Uint8Array(e.target.result);
+          var wb = XLSX.read(data, {type:'array', cellDates:false});
+          var ws = wb.Sheets[wb.SheetNames[0]];
+          if(!ws || !ws['!ref']) throw new Error('ไม่พบข้อมูลในไฟล์');
+          var range = XLSX.utils.decode_range(ws['!ref']);
+
+          // หาแถวหัวตาราง (แถวที่มีคำว่า "เลขประจำตัวนักเรียน")
+          var headerRow = -1;
+          for(var r=range.s.r; r<=Math.min(range.s.r+8, range.e.r); r++){
+            for(var c=range.s.c; c<=range.e.c; c++){
+              if(String(lecCellAt(ws,r,c)).indexOf('เลขประจำตัวนักเรียน')>=0){ headerRow=r; break; }
+            }
+            if(headerRow>=0) break;
+          }
+          if(headerRow<0) throw new Error('ไม่ใช่ไฟล์ LEC (RPT318) — ไม่พบหัวคอลัมน์มาตรฐาน');
+          // ข้อมูลเริ่มหลังหัวตาราง 2 แถว (หัวเป็น merged 2 บรรทัด)
+          var dataStart = headerRow + 2;
+
+          // ตำแหน่งคอลัมน์คงที่ของ RPT318 (อิง index จากหัวคอลัมน์ตัวแรก)
+          var C = {
+            sid:7, gender:8, prefix:9, first:10, last:11, birth:12,
+            nationality:13, race:14, religion:15, nid:16, grade:18, room:19,
+            height:22, weight:23,
+            fPrefix:43, fFirst:44, fLast:45, fReligion:46, fJob:47, fIncome:48, fPhone:49,
+            mPrefix:50, mFirst:51, mLast:52, mReligion:53, mJob:54, mIncome:55, mPhone:56,
+            parentStatus:57,
+            gPrefix:58, gFirst:59, gLast:60, gReligion:61, gJob:62, gIncome:63, gRel:64, gPhone:65,
+            // ที่อยู่ตามทะเบียนบ้าน 68-74 ; ที่อยู่ปัจจุบัน 75-81
+            rNo:68, rMoo:69, rRoad:70, rTambon:71, rAmphoe:72, rProvince:73, rZip:74,
+            cNo:75, cMoo:76, cRoad:77, cTambon:78, cAmphoe:79, cProvince:80, cZip:81
+          };
+
+          var out = [];
+          for(var rr=dataStart; rr<=range.e.r; rr++){
+            var sid    = lecCellAt(ws, rr, C.sid).trim();
+            var first  = lecCellAt(ws, rr, C.first).trim();
+            var last   = lecCellAt(ws, rr, C.last).trim();
+            var prefix = lecCellAt(ws, rr, C.prefix).trim();
+            // ข้ามแถวว่าง / แถวรวม
+            if(!sid && !first && !last) continue;
+
+            var gradeKey = lecGrade(lecCellAt(ws, rr, C.grade));
+            var room     = lecRoom(lecCellAt(ws, rr, C.room));
+            var nid      = lecCellAt(ws, rr, C.nid).replace(/[^0-9]/g,'').trim();
+            var fullName = lecJoinName(prefix, first, last);
+            var phone    = lecCellAt(ws, rr, C.gPhone).trim() || lecCellAt(ws, rr, C.fPhone).trim() || lecCellAt(ws, rr, C.mPhone).trim();
+
+            // แยกวันเกิด DD/MM/YYYY(พ.ศ.)
+            var bd='', bm='', by='';
+            var bRaw = lecCellAt(ws, rr, C.birth).trim();
+            var bm_ = bRaw.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+            if(bm_){ bd=String(parseInt(bm_[1],10)); bm=String(parseInt(bm_[2],10)); by=bm_[3]; }
+
+            var raw = {
+              'ชื่อ-สกุลนักเรียน': fullName,
+              'เลขประจำตัวนักเรียน': sid,
+              'เลขบัตรนักเรียน': nid,
+              'วันเกิด(วัน)': bd,
+              'วันเกิด(เดือน)': bm,
+              'วันเกิด(ปีพ.ศ.)': by,
+              'น้ำหนัก(กก.)': lecCellAt(ws, rr, C.weight).trim(),
+              'ส่วนสูง(ซม.)': lecCellAt(ws, rr, C.height).trim(),
+              'สัญชาตินักเรียน': lecCellAt(ws, rr, C.nationality).trim(),
+              'เชื้อชาตินักเรียน': lecCellAt(ws, rr, C.race).trim(),
+              'ศาสนานักเรียน': lecCellAt(ws, rr, C.religion).trim(),
+              // ── ที่อยู่ตามทะเบียนบ้าน ──
+              'บ้านเลขที่นักเรียน': lecCellAt(ws, rr, C.rNo).trim(),
+              'หมู่นักเรียน': lecRoom(lecCellAt(ws, rr, C.rMoo)),
+              'ตำบลนักเรียน': lecCellAt(ws, rr, C.rTambon).trim(),
+              'อำเภอนักเรียน': lecCellAt(ws, rr, C.rAmphoe).trim(),
+              'จังหวัดนักเรียน': lecCellAt(ws, rr, C.rProvince).trim(),
+              'รหัสไปรษณีย์นักเรียน': lecRoom(lecCellAt(ws, rr, C.rZip)),
+              // ── ที่อยู่ปัจจุบัน ──
+              'บ้านเลขที่ปัจจุบัน': lecCellAt(ws, rr, C.cNo).trim(),
+              'หมู่ปัจจุบัน': lecRoom(lecCellAt(ws, rr, C.cMoo)),
+              'ตำบลปัจจุบัน': lecCellAt(ws, rr, C.cTambon).trim(),
+              'อำเภอปัจจุบัน': lecCellAt(ws, rr, C.cAmphoe).trim(),
+              'จังหวัดปัจจุบัน': lecCellAt(ws, rr, C.cProvince).trim(),
+              'ไปรษณีย์ปัจจุบัน': lecRoom(lecCellAt(ws, rr, C.cZip)),
+              // ── บิดา ──
+              'คำนำหน้าบิดา': lecCellAt(ws, rr, C.fPrefix).trim(),
+              'ชื่อบิดา': lecCellAt(ws, rr, C.fFirst).trim(),
+              'นามสกุลบิดา': lecCellAt(ws, rr, C.fLast).trim(),
+              'ชื่อ-สกุลบิดา': lecJoinName(lecCellAt(ws,rr,C.fPrefix), lecCellAt(ws,rr,C.fFirst), lecCellAt(ws,rr,C.fLast)),
+              'ศาสนาบิดา': lecCellAt(ws, rr, C.fReligion).trim(),
+              'อาชีพบิดา': lecCellAt(ws, rr, C.fJob).trim(),
+              'รายได้บิดา': lecRoom(lecCellAt(ws, rr, C.fIncome)),
+              'โทรบิดา': lecCellAt(ws, rr, C.fPhone).trim(),
+              // ── มารดา ──
+              'คำนำหน้ามารดา': lecCellAt(ws, rr, C.mPrefix).trim(),
+              'ชื่อมารดา': lecCellAt(ws, rr, C.mFirst).trim(),
+              'นามสกุลมารดา': lecCellAt(ws, rr, C.mLast).trim(),
+              'ชื่อ-สกุลมารดา': lecJoinName(lecCellAt(ws,rr,C.mPrefix), lecCellAt(ws,rr,C.mFirst), lecCellAt(ws,rr,C.mLast)),
+              'ศาสนามารดา': lecCellAt(ws, rr, C.mReligion).trim(),
+              'อาชีพมารดา': lecCellAt(ws, rr, C.mJob).trim(),
+              'รายได้มารดา': lecRoom(lecCellAt(ws, rr, C.mIncome)),
+              'โทรมารดา': lecCellAt(ws, rr, C.mPhone).trim(),
+              'สถานภาพบิดา-มารดา': lecCellAt(ws, rr, C.parentStatus).trim(),
+              // ── ผู้ปกครอง ──
+              'คำนำหน้าผู้ปกครอง': lecCellAt(ws, rr, C.gPrefix).trim(),
+              'ชื่อจริงผู้ปกครอง': lecCellAt(ws, rr, C.gFirst).trim(),
+              'นามสกุลผู้ปกครอง': lecCellAt(ws, rr, C.gLast).trim(),
+              'ชื่อผู้ปกครอง': lecJoinName(lecCellAt(ws,rr,C.gPrefix), lecCellAt(ws,rr,C.gFirst), lecCellAt(ws,rr,C.gLast)),
+              'อาชีพผู้ปกครอง': lecCellAt(ws, rr, C.gJob).trim(),
+              'รายได้ผู้ปกครอง': lecRoom(lecCellAt(ws, rr, C.gIncome)),
+              'ความสัมพันธ์ผู้ปกครอง': lecCellAt(ws, rr, C.gRel).trim(),
+              'โทรมือถือผู้ปกครอง': lecCellAt(ws, rr, C.gPhone).trim()
+            };
+            // ลบคีย์ที่ว่างทิ้ง เพื่อให้ตอน merge แบบ "เติมที่ขาด" ไม่ไปทับด้วยค่าว่าง
+            Object.keys(raw).forEach(function(k){ if(raw[k]==='' ) delete raw[k]; });
+
+            out.push({
+              grade: gradeKey, room: room,
+              student: {
+                studentId: sid,
+                fullName: fullName,
+                nickname: '',
+                gender: lecGender(lecCellAt(ws, rr, C.gender)),
+                phone: String(phone||'').trim(),
+                raw: raw
+              }
+            });
+          }
+          if(!out.length) throw new Error('ไม่พบแถวข้อมูลนักเรียนในไฟล์');
+          resolve(out);
+        }catch(err){ reject(err); }
+      };
+      fr.readAsArrayBuffer(file);
+    });
+  };
+
+  // ── รวมระเบียนนักเรียน: existing (ของเดิม) + incoming (นำเข้าใหม่) ──
+  // matchMode: 'fill' = เก็บของเดิม เติมเฉพาะช่องที่ขาด ; 'overwrite' = ค่าใหม่ทับ (ช่องที่ใหม่ไม่มี ยังคงของเดิม)
+  // คงรูปนักเรียน (photoFileId/photoURL) และ docId เดิมไว้เสมอ
+  window.mergeStudentLists = function(existing, incoming, matchMode){
+    function keyOf(s){
+      var sid = String(s.studentId||'').trim();
+      if(sid) return 'sid:'+sid;
+      var nid = String((s.raw&&s.raw['เลขบัตรนักเรียน'])||'').replace(/[^0-9]/g,'');
+      return nid ? 'nid:'+nid : null;
+    }
+    function isBlank(v){ var t=(v==null?'':String(v).trim()); return !t || t.indexOf('ไม่ทราบ')>=0; }
+
+    var idx = {};
+    var combined = existing.map(function(s){ return Object.assign({}, s); });
+    combined.forEach(function(s, i){
+      var k = keyOf(s); if(k && idx[k]===undefined) idx[k]=i;
+      // เผื่อจับด้วยเลขบัตรได้อีกทาง
+      var nid = String((s.raw&&s.raw['เลขบัตรนักเรียน'])||'').replace(/[^0-9]/g,'');
+      if(nid && idx['nid:'+nid]===undefined) idx['nid:'+nid]=i;
+    });
+
+    var added=0, updated=0;
+    incoming.forEach(function(ns){
+      var k = keyOf(ns);
+      var nid = String((ns.raw&&ns.raw['เลขบัตรนักเรียน'])||'').replace(/[^0-9]/g,'');
+      var pos = (k!=null && idx[k]!==undefined) ? idx[k]
+               : (nid && idx['nid:'+nid]!==undefined ? idx['nid:'+nid] : undefined);
+
+      if(pos===undefined){
+        // นักเรียนใหม่
+        combined.push(Object.assign({}, ns));
+        var np = combined.length-1;
+        if(k!=null) idx[k]=np;
+        if(nid) idx['nid:'+nid]=np;
+        added++;
+        return;
+      }
+      // มีอยู่แล้ว → merge ตามโหมด
+      var cur = combined[pos];
+      var curRaw = Object.assign({}, cur.raw||{});
+      var inRaw  = ns.raw||{};
+      if(matchMode==='overwrite'){
+        // ค่าใหม่ทับ (เฉพาะที่มีค่า) — ช่องที่ใหม่ไม่มี ยังเก็บของเดิม
+        Object.keys(inRaw).forEach(function(f){ if(!isBlank(inRaw[f])) curRaw[f]=inRaw[f]; });
+        if(!isBlank(ns.fullName)) cur.fullName = ns.fullName;
+        if(!isBlank(ns.phone))    cur.phone    = ns.phone;
+        if(!isBlank(ns.gender) && ns.gender!=='ไม่ระบุ') cur.gender = ns.gender;
+        if(!isBlank(ns.studentId)) cur.studentId = ns.studentId;
+      } else {
+        // 'fill' — เติมเฉพาะที่ขาด ของเดิมอยู่ครบ
+        Object.keys(inRaw).forEach(function(f){ if(isBlank(curRaw[f]) && !isBlank(inRaw[f])) curRaw[f]=inRaw[f]; });
+        if(isBlank(cur.fullName)) cur.fullName = ns.fullName;
+        if(isBlank(cur.phone))    cur.phone    = ns.phone;
+        if((isBlank(cur.gender)||cur.gender==='ไม่ระบุ') && ns.gender && ns.gender!=='ไม่ระบุ') cur.gender = ns.gender;
+        if(isBlank(cur.studentId)) cur.studentId = ns.studentId;
+      }
+      cur.raw = curRaw;
+      // คงรูป/รหัสเอกสารเดิมไว้ (ไม่ทับ)
+      // photoFileId, photoURL, id ของ cur ยังอยู่เดิมจากการ clone ข้างต้น
+      updated++;
+    });
+    return {list:combined, added:added, updated:updated};
+  };
+
+  // ── เลือกวิธีจัดการเมื่อนำเข้าทับห้องที่มีอยู่ (LEC) — 3 ตัวเลือก ──
+  function chooseLECMode(classIds){
+    return new Promise(function(resolve){
+      var bd = document.createElement('div'); bd.className='modal-bd show';
+      bd.innerHTML = '<div class="modal" style="max-width:520px"><div class="modal-head"><h3>⚠️ พบห้องที่มีข้อมูลอยู่แล้ว</h3></div>'+
+        '<div class="modal-body"><p class="dlg-msg">พบห้องเรียนที่มีข้อมูลในระบบแล้ว '+classIds.length+' ห้อง:<br>'+
+        '<small>'+classIds.map(function(c){ var p=c.split('_'); var info=window.GRADE_INFO[p[1]]; return 'ปี '+p[0]+' '+info.label+(p[2]?('/'+p[2]):''); }).join(', ')+'</small></p>'+
+        '<div class="dlg-warn">เลือกวิธีดำเนินการกับนักเรียนที่<strong>มีอยู่แล้ว</strong> (จับคู่ด้วยเลขประจำตัว/เลขบัตร) — รูปนักเรียนเดิมจะถูกเก็บไว้ทุกกรณี:</div>'+
+        '<div style="display:flex;flex-direction:column;gap:.5rem;margin-top:.85rem">'+
+        '<button class="btn btn-info" data-mode="fill"><strong>➕ เติมเฉพาะที่ขาด</strong> — ข้อมูลเดิมอยู่ครบ เติมเฉพาะช่องที่ว่าง + เพิ่มนักเรียนใหม่ <em>(แนะนำ)</em></button>'+
+        '<button class="btn btn-warning" data-mode="overwrite"><strong>🔁 เขียนทับข้อมูลซ้ำ</strong> — ใช้ข้อมูลจาก LEC ทับช่องที่มีค่า + เพิ่มนักเรียนใหม่</button>'+
+        '<button class="btn btn-danger" data-mode="replace"><strong>🗑 แทนที่ทั้งห้อง</strong> — ลบนักเรียนเดิมทั้งหมด แล้วใส่ใหม่จาก LEC</button>'+
+        '<button class="btn" data-mode="cancel">ยกเลิก</button>'+
+        '</div></div></div>';
+      document.body.appendChild(bd);
+      bd.querySelectorAll('button[data-mode]').forEach(function(b){
+        b.onclick = function(){
+          var m = b.dataset.mode;
+          bd.classList.remove('show'); setTimeout(function(){bd.remove();},220);
+          resolve(m==='cancel'?null:m);
+        };
+      });
+    });
+  }
+
+  // ── Dialog นำเข้า LEC ──
+  window.openLECImportDialog = function(){
+    var bd = document.createElement('div'); bd.className='modal-bd show';
+    bd.innerHTML =
+      '<div class="modal modal-lg">'+
+        '<div class="modal-head"><h3>📥 Import ข้อมูลจาก LEC</h3><button class="modal-close" id="lecClose">×</button></div>'+
+        '<div class="modal-body">'+
+          '<div class="form-row hint" style="background:#eff6ff;border-left:4px solid #3b82f6;padding:.65rem .85rem;border-radius:var(--r-sm);margin-bottom:.85rem">'+
+            '📄 รองรับไฟล์ <strong>RPT318 รายงานรายละเอียดข้อมูลนักเรียน</strong> (.xls) ที่ Export จากระบบ LEC (อปท.)<br>'+
+            '<span style="color:var(--ink-muted)">ระบบจะอ่านคอลัมน์ <code>ชั้นปี/ห้องเรียน</code> แล้วแยกห้องให้อัตโนมัติ และดึงเฉพาะข้อมูลที่เข้ากับระบบนี้</span>'+
+          '</div>'+
+          '<div class="form-row"><label>เลือกไฟล์ LEC (.xls / .xlsx)</label>'+
+          '<input type="file" id="lecFile" accept=".xls,.xlsx"></div>'+
+          '<div id="lecPreview"></div>'+
+        '</div>'+
+        '<div class="modal-foot">'+
+          '<button class="btn" id="lecCancel">ยกเลิก</button>'+
+          '<button class="btn btn-primary" id="lecSubmit" disabled>✅ ดำเนินการนำเข้า</button>'+
+        '</div>'+
+      '</div>';
+    document.body.appendChild(bd);
+    var parsed = null;
+    function close(){ bd.classList.remove('show'); setTimeout(function(){bd.remove();}, 220); }
+    bd.querySelector('#lecClose').onclick = close;
+    bd.querySelector('#lecCancel').onclick = close;
+
+    bd.querySelector('#lecFile').addEventListener('change', async function(ev){
+      var f = ev.target.files[0]; if(!f) return;
+      bd.querySelector('#lecSubmit').disabled = true;
+      bd.querySelector('#lecPreview').innerHTML = '';
+      try{
+        window.showLoading(true, 'กำลังอ่านไฟล์ LEC...');
+        parsed = await window.readLECFile(f);
+        window.showLoading(false);
+        renderLECPreview();
+      }catch(e){
+        window.showLoading(false);
+        parsed = null;
+        bd.querySelector('#lecPreview').innerHTML = '<div class="dlg-warn dlg-danger">อ่านไฟล์ไม่สำเร็จ: '+window.escHTML(e.message)+'</div>';
+      }
+    });
+
+    function renderLECPreview(){
+      var st = window.AppState.settings || {};
+      var groups = {}, invalid = 0;
+      parsed.forEach(function(rec){
+        if(!rec.grade){ invalid++; return; }
+        var key = rec.grade+'/'+rec.room;
+        if(!groups[key]) groups[key] = {grade:rec.grade, room:rec.room, students:[]};
+        groups[key].students.push(rec.student);
+      });
+      var keys = Object.keys(groups);
+      var yearGuess = parseInt(st.currentAcademicYear || 2568, 10);
+      var existingIds = (window.AppState.classrooms||[]).map(function(c){return c.id;});
+
+      var html = '<div style="background:var(--bg);border-radius:var(--r);padding:.85rem;margin-top:.6rem">';
+      html += '<div style="display:flex;gap:1.2rem;flex-wrap:wrap;margin-bottom:.6rem">';
+      html += '<span><strong>จำนวนนักเรียน:</strong> '+parsed.length+' คน</span>';
+      html += '<span><strong>ห้องที่พบ:</strong> '+keys.length+' ห้อง</span>';
+      if(invalid) html += '<span style="color:var(--danger)">⚠️ ระบุชั้นไม่ได้: '+invalid+' คน (จะข้าม)</span>';
+      html += '</div>';
+      if(keys.length){
+        html += '<table class="data-tbl" style="margin-bottom:.8rem"><thead><tr><th>ชั้น/ห้อง</th><th>นักเรียน</th><th>ชาย</th><th>หญิง</th><th>สถานะในระบบ</th></tr></thead><tbody>';
+        keys.sort().forEach(function(k){
+          var g = groups[k]; var info = window.GRADE_INFO[g.grade];
+          var cid = window.classroomId(yearGuess, g.grade, g.room);
+          var male = g.students.filter(function(s){return s.gender==='ชาย';}).length;
+          var exists = existingIds.indexOf(cid)>=0;
+          html += '<tr><td><span style="background:'+info.color+'1a;color:'+info.color+';padding:2px 8px;border-radius:99px;font-weight:600">'+window.classLabel(info.num, g.room)+'</span></td>'+
+            '<td style="text-align:center">'+g.students.length+'</td>'+
+            '<td style="text-align:center">'+male+'</td>'+
+            '<td style="text-align:center">'+(g.students.length-male)+'</td>'+
+            '<td>'+(exists?'<span style="color:var(--warning);font-weight:600">⚠️ มีอยู่แล้ว</span>':'<span style="color:var(--success)">✅ ใหม่</span>')+'</td></tr>';
+        });
+        html += '</tbody></table>';
+      }
+      html += '<details style="margin-bottom:.6rem"><summary style="cursor:pointer;font-weight:600;margin-bottom:.4rem">ดูตัวอย่างข้อมูล 3 คนแรก</summary><div style="overflow-x:auto"><table class="data-tbl" style="font-size:.82rem">';
+      html += '<thead><tr><th>เลขประจำตัว</th><th>ชื่อ-สกุล</th><th>เพศ</th><th>เลขบัตร</th><th>เกิด</th><th>บิดา</th><th>มารดา</th></tr></thead><tbody>';
+      parsed.slice(0,3).forEach(function(rec){
+        var s = rec.student, r = s.raw;
+        var bdate = [r['วันเกิด(วัน)'],r['วันเกิด(เดือน)'],r['วันเกิด(ปีพ.ศ.)']].filter(Boolean).join('/');
+        html += '<tr><td>'+window.escHTML(s.studentId)+'</td><td>'+window.escHTML(s.fullName)+'</td><td>'+window.escHTML(s.gender)+'</td>'+
+          '<td>'+window.escHTML(r['เลขบัตรนักเรียน']||'')+'</td><td>'+window.escHTML(bdate)+'</td>'+
+          '<td>'+window.escHTML(r['ชื่อ-สกุลบิดา']||'')+'</td><td>'+window.escHTML(r['ชื่อ-สกุลมารดา']||'')+'</td></tr>';
+      });
+      html += '</tbody></table></div></details>';
+      html += '<div class="form-row" style="margin:0"><label>ปีการศึกษาที่จะนำเข้า (พ.ศ.)</label><input type="number" id="lecYear" value="'+yearGuess+'"></div>';
+      html += '</div>';
+      bd.querySelector('#lecPreview').innerHTML = html;
+      bd.querySelector('#lecSubmit').disabled = (keys.length===0);
+    }
+
+    bd.querySelector('#lecSubmit').onclick = async function(){
+      if(!parsed) return;
+      var year = parseInt(bd.querySelector('#lecYear').value, 10);
+      if(!year || year<2400 || year>2700){ window.showToast('ปีการศึกษาไม่ถูกต้อง','warning'); return; }
+      try{
+        window.showLoading(true, 'กำลังประมวลผล...');
+        var groups = {}, skipped = 0;
+        parsed.forEach(function(rec){
+          if(!rec.grade){ skipped++; return; }
+          var key = rec.grade+'/'+rec.room;
+          if(!groups[key]) groups[key] = {grade:rec.grade, room:rec.room, students:[]};
+          groups[key].students.push(rec.student);
+        });
+        var keys = Object.keys(groups);
+        if(!keys.length){ window.showLoading(false); window.showToast('ไม่พบแถวที่ระบุชั้นได้','error'); return; }
+
+        // ── ตรวจห้องซ้ำจากข้อมูลจริงใน Firestore (ไม่พึ่ง AppState ที่อาจไม่ตรง) ──
+        // ดึงนักเรียนของห้องปลายทางทุกห้องมาก่อน เพื่อรู้ว่าห้องไหน "มีข้อมูลอยู่จริง"
+        window.showLoading(true, 'กำลังตรวจสอบข้อมูลเดิม...');
+        var existingByCid = {};   // cid → [students]
+        var conflicts = [];
+        for(var ci=0; ci<keys.length; ci++){
+          var gg = groups[keys[ci]];
+          var ccid = window.classroomId(year, gg.grade, gg.room);
+          var ex = [];
+          try{ ex = await window.getStudentsOfClass(ccid, true); }catch(e){ ex = []; }
+          existingByCid[ccid] = ex;
+          if(ex && ex.length > 0) conflicts.push(ccid);
+        }
+
+        var mode = 'replace'; // ถ้าไม่มีห้องซ้ำ → ใส่ใหม่ทั้งหมด
+        if(conflicts.length){
+          window.showLoading(false);
+          mode = await chooseLECMode(conflicts);
+          if(!mode) return;          // ยกเลิก → ไม่เขียนอะไรเลย
+          window.showLoading(true, 'กำลังบันทึก...');
+        }
+
+        var totalNew=0, totalUpd=0;
+        for(var i=0;i<keys.length;i++){
+          var g = groups[keys[i]];
+          var incoming = sortAndOrder(g.students);
+          var cid = window.classroomId(year, g.grade, g.room);
+          var existing = existingByCid[cid] || [];
+          var isConflict = existing.length > 0;
+          var finalList;
+          if(isConflict && (mode==='fill' || mode==='overwrite')){
+            var res = window.mergeStudentLists(existing, incoming, mode);
+            finalList = sortAndOrder(res.list);
+            totalNew += res.added; totalUpd += res.updated;
+          } else {
+            // replace หรือห้องใหม่
+            finalList = incoming;
+            totalNew += incoming.length;
+          }
+          var male = finalList.filter(function(s){return s.gender==='ชาย';}).length;
+          var female = finalList.filter(function(s){return s.gender==='หญิง';}).length;
+          await window.upsertClassroom({ academicYear:year, grade:g.grade, room:g.room,
+            studentCount: finalList.length, maleCount:male, femaleCount:female, sourceFormat:'LEC' });
+          await window.bulkSaveStudents(cid, finalList);
+        }
+        window.showLoading(false);
+        var msg = 'นำเข้าจาก LEC สำเร็จ — เพิ่มใหม่ '+totalNew+' คน';
+        if(totalUpd) msg += ', อัปเดต '+totalUpd+' คน';
+        msg += ' ('+keys.length+' ห้อง)';
+        if(skipped) msg += ' — ข้าม '+skipped+' คน';
+        window.showToast(msg, 'success', 6000);
+        close();
+      }catch(e){
         window.showLoading(false);
         console.error(e);
         window.showToast('นำเข้าผิดพลาด: '+e.message, 'error');
@@ -3761,12 +4205,25 @@ window.deleteStudent = async function(classId, studentDocId){
     var slice = TBL_STATE.filtered.slice(start, start+ps);
 
     if(!slice.length){
-      tb.innerHTML = '<tr><td colspan="7" class="text-center muted" style="padding:2rem">ไม่พบนักเรียน</td></tr>';
+      tb.innerHTML = '<tr><td colspan="8" class="text-center muted" style="padding:2rem">ไม่พบนักเรียน</td></tr>';
     } else {
       tb.innerHTML = slice.map(function(s){
         var _g = (function(g,name){ if(g && g!=='ไม่ระบุ' && g!=='') return g; var n=String(name||'').trim(); if(/^(เด็กชาย|ด.ช.|นาย)/.test(n)) return 'ชาย'; if(/^(เด็กหญิง|ด.ญ.|นางสาว|นาง)/.test(n)) return 'หญิง'; return g||''; })(s.gender,s.fullName); var gc = _g==='ชาย'?'gender-m':(_g==='หญิง'?'gender-f':'');
         return '<tr>'+
           '<td>'+(s.order||'')+'</td>'+
+          '<td style="text-align:center">'+
+          (function(s){
+            var src = window.getPhotoSrc(s);
+            if(src){
+              return '<img class="stu-mini-photo" src="'+window.escHTML(src)+'" referrerpolicy="no-referrer" '+
+                'data-act="openStudent" data-docid="'+window.escHTML(s.id||'')+'" '+
+                'style="width:38px;height:48px;object-fit:cover;border-radius:6px;border:1px solid var(--line,#e5e7eb);cursor:pointer;vertical-align:middle;background:#f1f5f9" '+
+                'onerror="this.style.display=\'none\';this.insertAdjacentHTML(\'afterend\',\'<span class=&quot;stu-mini-ph&quot;>👤</span>\')">';
+            }
+            return '<span class="stu-mini-ph" data-act="openStudent" data-docid="'+window.escHTML(s.id||'')+'" '+
+              'style="display:inline-flex;align-items:center;justify-content:center;width:38px;height:48px;border-radius:6px;border:1px dashed var(--line,#cbd5e1);color:#94a3b8;font-size:1.2rem;cursor:pointer;background:#f8fafc">👤</span>';
+          })(s)+
+          '</td>'+
           '<td>'+window.escHTML(s.studentId||'')+'</td>'+
           '<td>'+window.escHTML(s.fullName||'')+'</td>'+
           '<td>'+window.escHTML(s.nickname||'')+'</td>'+
