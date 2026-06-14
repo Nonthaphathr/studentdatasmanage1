@@ -1108,6 +1108,7 @@ window.deleteStudent = async function(classId, studentDocId){
     else if(act==='addRoom'){ openAddRoomModal(p.grade); }
     else if(act==='gotoStudents'){ setView('studentList'); }
     else if(act==='gotoHomeMap'){ setView('homeMap'); }
+    else if(act==='gotoHomeVisit'){ window.openHomeVisitDoc(window.AppState.currentClassId); }
     else if(act==='backGrade'){ setView('grade'); }
     else if(act==='gotoPrint'){ openPrintWindow(window.AppState.currentClassId); }
     else if(act==='importFile'){ openImportDialog(window.AppState.currentClassId); }
@@ -1211,6 +1212,7 @@ window.deleteStudent = async function(classId, studentDocId){
     html += '<div class="action-card" data-act="gotoStudents"><div class="ac-icon">👥</div><div class="ac-text"><h3>ดูข้อมูลนักเรียน</h3><p>รายชื่อ ค้นหา แก้ไข อัปโหลดรูป</p></div></div>';
     html += '<div class="action-card" data-act="gotoPrint"><div class="ac-icon">🖨️</div><div class="ac-text"><h3>โหลดเอกสารประจำชั้น</h3><p>พิมพ์ปก คำนำ สารบัญ ข้อมูลรายคน</p></div></div>';
     html += '<div class="action-card" data-act="gotoHomeMap"><div class="ac-icon">🗺️</div><div class="ac-text"><h3>แผนที่บ้านนักเรียน</h3><p>ปักหมุดบ้าน นำทางด้วย Google Maps</p></div></div>';
+    html += '<div class="action-card" data-act="gotoHomeVisit"><div class="ac-icon">🏠</div><div class="ac-text"><h3>ข้อมูลสรุปสำหรับออกเยี่ยมบ้าน</h3><p>สรุปรายชื่อ เบอร์ติดต่อ ที่อยู่ QR แผนที่ แยกตามหมู่บ้าน</p></div></div>';
     html += '</div>';
     html += '<button class="add-student-cta" data-act="addStudentManual" data-p=\''+JSON.stringify({classId:current.id})+'\'>'+
               '<span class="asc-icon">➕</span>'+
@@ -7106,6 +7108,243 @@ function printAnalyticsPDF(sections,cur,total,showSummary){
       window.showToast('ลบหมุดเรียบร้อย','success');
     }catch(e){
       window.showToast('ลบหมุดไม่สำเร็จ: '+e.message,'error');
+    }
+  };
+
+  /* ═══════════════════════════════════════════════════════════════
+     ข้อมูลสรุปสำหรับออกเยี่ยมบ้าน (Home-Visit Summary)
+     เอกสาร HTML แนวนอน — ตารางแยกตามหมู่บ้าน
+     คอลัมน์: ชื่อ-สกุล(ชื่อเล่น) | เบอร์นักเรียน | เบอร์ผู้ปกครอง(ชื่อ) | ที่อยู่ | QR Google Map
+     ═══════════════════════════════════════════════════════════════ */
+  function hvEsc(s){
+    s = (s==null?'':String(s));
+    return s.replace(/[&<>"']/g, function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];});
+  }
+  // รวมที่อยู่นักเรียน (พร้อมชื่อหมู่บ้าน)
+  function hvStudentAddr(r){
+    return [
+      r['บ้านเลขที่นักเรียน']?'บ้านเลขที่ '+r['บ้านเลขที่นักเรียน']:'',
+      r['หมู่นักเรียน']?'หมู่ '+r['หมู่นักเรียน']:'',
+      r['หมู่บ้านนักเรียน']?'บ้าน'+r['หมู่บ้านนักเรียน']:'',
+      r['ตำบลนักเรียน']?'ต.'+r['ตำบลนักเรียน']:'',
+      r['อำเภอนักเรียน']?'อ.'+r['อำเภอนักเรียน']:'',
+      r['จังหวัดนักเรียน']?'จ.'+r['จังหวัดนักเรียน']:'',
+      r['รหัสไปรษณีย์นักเรียน']||''
+    ].filter(Boolean).join(' ');
+  }
+  // ชื่อหมู่บ้านสำหรับ "แสดงผล" (เติม "บ้าน" นำหน้า)
+  function hvVillage(r){
+    var v = String(r['หมู่บ้านนักเรียน']||'').trim();
+    if(!v) return '';
+    return /^บ้าน/.test(v) ? v : ('บ้าน'+v);
+  }
+  // คีย์ normalize สำหรับ "จัดกลุ่ม" หมู่บ้านที่สะกดต่างกันเล็กน้อยให้รวมกัน
+  //  • "เเ" (สระเอ 2 ตัว U+0E40 U+0E40) → "แ" (สระแอ U+0E41) — หน้าตาเหมือนกันแต่คนละอักขระ
+  //  • วรรณยุกต์/สระบน-ล่างที่พิมพ์ซ้ำติดกัน เช่น "ขี้้เหล็ก" (ไม้โท 2 ตัว) → "ขี้เหล็ก"
+  //  • ตัด "บ้าน" นำหน้า, ช่องว่าง, จุด/ขีด แล้วทำตัวพิมพ์เล็ก
+  function hvVillageKey(s){
+    s = String(s||'');
+    try{ s = s.normalize('NFC'); }catch(e){}
+    s = s.replace(/\u0E40\u0E40/g, '\u0E41');                         // เเ → แ
+    s = s.replace(/([\u0E31\u0E34-\u0E3A\u0E47-\u0E4E])\1+/g, '$1');  // ยุบมาตรา/วรรณยุกต์ซ้ำ
+    s = s.replace(/^บ้าน/, '').replace(/\s+/g,'').replace(/[.\-_]/g,'').toLowerCase().trim();
+    return s;
+  }
+  // เบอร์ผู้ปกครอง/บิดา/มารดา + (ชื่อ) ต่อท้ายเบอร์
+  function hvGuardianContacts(r){
+    var rows = [];
+    function add(phone, name, role){
+      phone = String(phone||'').trim();
+      name  = String(name||'').trim();
+      if(!phone && !name) return;
+      var label = phone || '<span style="color:#9ca3af">(ไม่มีเบอร์)</span>';
+      var who = [role, name].filter(Boolean).join(' ');
+      rows.push('<div class="hv-contact">'+label+(who?' <span class="hv-who">('+hvEsc(who)+')</span>':'')+'</div>');
+    }
+    add(r['โทรมือถือผู้ปกครอง'] || r['โทรบ้านผู้ปกครอง'], r['ชื่อผู้ปกครอง'], 'ผู้ปกครอง');
+    add(r['โทรบิดา'],  r['ชื่อ-สกุลบิดา'],  'บิดา');
+    add(r['โทรมารดา'], r['ชื่อ-สกุลมารดา'], 'มารดา');
+    return rows.join('') || '<span style="color:#9ca3af">-</span>';
+  }
+
+  window.openHomeVisitDoc = async function(classId){
+    if(!classId){ window.showToast('ยังไม่ได้เลือกห้อง','warning'); return; }
+    try{
+      window.showLoading && window.showLoading(true,'กำลังเตรียมเอกสารเยี่ยมบ้าน...');
+      var students = await window.getStudentsOfClass(classId, true);
+      var rm = (window.AppState.classrooms||[]).find(function(c){return c.id===classId});
+      var st = window.AppState.settings || {};
+      window.showLoading && window.showLoading(false);
+      if(!students.length){ window.showToast('ห้องนี้ไม่มีนักเรียน','warning'); return; }
+
+      var info = window.GRADE_INFO ? window.GRADE_INFO[rm.grade] : null;
+      var clsLbl = info ? window.classLabel(info.num, rm.room) : (rm.grade+(rm.room?'/'+rm.room:''));
+      var accent = info ? info.color : '#4338ca';
+      var schoolName = st.schoolName || 'โรงเรียนกระดุมทองวิทยา';
+      var year = rm.academicYear || '';
+
+      // ── จัดกลุ่มตามหมู่บ้าน (รวมชื่อที่สะกดต่างกันเล็กน้อยเข้าด้วยกัน) ──
+      var buckets = {}; // key → { displays:{ชื่อ:จำนวน}, students:[] }
+      students.forEach(function(s){
+        var r = s.raw || {};
+        var rawName = String(r['หมู่บ้านนักเรียน']||'').trim();
+        var key = rawName ? (hvVillageKey(rawName) || '__none__') : '__none__';
+        if(!buckets[key]) buckets[key] = { displays:{}, students:[] };
+        var disp = rawName ? (/^บ้าน/.test(rawName)?rawName:('บ้าน'+rawName)) : 'ไม่ระบุหมู่บ้าน';
+        buckets[key].displays[disp] = (buckets[key].displays[disp]||0)+1;
+        buckets[key].students.push(s);
+      });
+      // เลือกชื่อที่พบบ่อยที่สุดในกลุ่มเป็นชื่อแสดงผล (เท่ากันเลือกชื่อที่ยาวกว่า)
+      var groups = {};
+      Object.keys(buckets).forEach(function(k){
+        var b = buckets[k];
+        var canon;
+        if(k==='__none__'){ canon = 'ไม่ระบุหมู่บ้าน'; }
+        else{
+          var best=null, bestCnt=-1;
+          Object.keys(b.displays).forEach(function(name){
+            var c=b.displays[name];
+            if(c>bestCnt || (c===bestCnt && name.length>(best?best.length:0))){ best=name; bestCnt=c; }
+          });
+          canon = best;
+        }
+        // ถ้าชื่อ canon ชนกับกลุ่มอื่น (ไม่น่าเกิด) ให้ต่อท้ายแยก
+        if(groups[canon]) groups[canon] = groups[canon].concat(b.students);
+        else groups[canon] = b.students;
+      });
+      // เรียงชื่อหมู่บ้าน (ไม่ระบุไว้ท้ายสุด) + เรียงนักเรียนตามเลขประจำตัว/ชื่อ
+      var villageNames = Object.keys(groups).sort(function(a,b){
+        if(a==='ไม่ระบุหมู่บ้าน') return 1;
+        if(b==='ไม่ระบุหมู่บ้าน') return -1;
+        return a.localeCompare(b,'th');
+      });
+      villageNames.forEach(function(v){
+        groups[v].sort(function(a,b){
+          var ia=String(a.studentId||'').trim(), ib=String(b.studentId||'').trim();
+          if(!ia && !ib) return (a.fullName||'').localeCompare(b.fullName||'','th');
+          if(!ia) return 1; if(!ib) return -1;
+          return ia.localeCompare(ib,'th',{numeric:true});
+        });
+      });
+
+      var pinnedTotal = students.filter(function(s){return typeof s.homeLat==='number' && typeof s.homeLng==='number';}).length;
+
+      // ── สร้างตารางต่อหมู่บ้าน ──
+      var sectionsHTML = villageNames.map(function(v){
+        var list = groups[v];
+        var rows = list.map(function(s, i){
+          var r = s.raw || {};
+          var name = (r['ชื่อ-สกุลนักเรียน'] || s.fullName || '').trim();
+          var nick = (r['ชื่อเล่น'] || s.nickname || '').trim();
+          var nameCell = hvEsc(name) + (nick? ' <span class="hv-nick">('+hvEsc(nick)+')</span>':'');
+          var _sp = String(r['โทรนักเรียน']||'').trim();
+          var stuPhone = _sp ? hvEsc(_sp) : '<span style="color:#9ca3af">-</span>';
+          var guardian = hvGuardianContacts(r);
+          var addr = hvStudentAddr(r) || '<span style="color:#9ca3af">-</span>';
+          // QR Google Map
+          var qrCell;
+          if(typeof s.homeLat==='number' && typeof s.homeLng==='number'){
+            var mapUrl = gmapsViewUrl(s.homeLat, s.homeLng);
+            var qrSrc = 'https://api.qrserver.com/v1/create-qr-code/?size=150x150&margin=4&data='+encodeURIComponent(mapUrl);
+            qrCell = '<a href="'+mapUrl+'" target="_blank" rel="noopener"><img class="hv-qr" src="'+qrSrc+'" alt="QR แผนที่" crossorigin="anonymous"></a>'+
+                     '<div class="hv-coord">'+s.homeLat.toFixed(5)+', '+s.homeLng.toFixed(5)+'</div>';
+          }else{
+            qrCell = '<div class="hv-nopin">ยังไม่ปักหมุด</div>';
+          }
+          return '<tr>'+
+            '<td class="c-no">'+(i+1)+'</td>'+
+            '<td class="c-name">'+nameCell+'</td>'+
+            '<td class="c-phone">'+stuPhone+'</td>'+
+            '<td class="c-guard">'+guardian+'</td>'+
+            '<td class="c-addr">'+addr+'</td>'+
+            '<td class="c-qr">'+qrCell+'</td>'+
+          '</tr>';
+        }).join('');
+        return '<section class="hv-village">'+
+          '<div class="hv-vhead"><span class="hv-vname">🏘️ '+hvEsc(v)+'</span>'+
+            '<span class="hv-vcount">'+list.length+' คน</span></div>'+
+          '<table class="hv-tbl"><thead><tr>'+
+            '<th class="c-no">#</th>'+
+            '<th class="c-name">ชื่อ-สกุล (ชื่อเล่น)</th>'+
+            '<th class="c-phone">เบอร์นักเรียน</th>'+
+            '<th class="c-guard">เบอร์ผู้ปกครอง / บิดา-มารดา (ชื่อ)</th>'+
+            '<th class="c-addr">ที่อยู่</th>'+
+            '<th class="c-qr">QR Google Map</th>'+
+          '</tr></thead><tbody>'+rows+'</tbody></table>'+
+        '</section>';
+      }).join('');
+
+      var today = (new Date()).toLocaleDateString('th-TH',{day:'numeric',month:'long',year:'numeric'});
+
+      var css =
+        '@page{size:A4 landscape;margin:8mm}'+
+        '*{box-sizing:border-box;font-variant-numeric:normal}'+
+        'body{font-family:"Sarabun",sans-serif;font-size:11pt;color:#1f2937;margin:0;background:#e5e7eb}'+
+        'h1,h2,h3{font-family:"Kanit",sans-serif;margin:0}'+
+        '.sheet{background:#fff;width:297mm;min-height:210mm;padding:8mm 10mm;margin:6mm auto;box-shadow:0 4px 14px rgba(0,0,0,.1)}'+
+        '.hv-head{display:flex;align-items:center;gap:12px;border-bottom:3px solid '+accent+';padding-bottom:8px;margin-bottom:10px}'+
+        '.hv-head .ht{flex:1}'+
+        '.hv-head h1{font-size:18pt;color:'+accent+'}'+
+        '.hv-head .sub{font-size:11pt;color:#6b7280;margin-top:2px}'+
+        '.hv-head .meta{text-align:right;font-size:10pt;color:#6b7280;line-height:1.5}'+
+        '.hv-village{margin-bottom:14px;page-break-inside:auto}'+
+        '.hv-vhead{display:flex;justify-content:space-between;align-items:center;background:'+accent+'14;border-left:5px solid '+accent+';padding:6px 12px;border-radius:6px;margin-bottom:4px}'+
+        '.hv-vname{font-family:"Kanit",sans-serif;font-weight:600;font-size:13pt;color:'+accent+'}'+
+        '.hv-vcount{font-size:10pt;color:#374151;background:#fff;border:1px solid '+accent+'55;padding:2px 10px;border-radius:999px}'+
+        '.hv-tbl{width:100%;border-collapse:collapse;font-size:10pt}'+
+        '.hv-tbl th,.hv-tbl td{border:1px solid #cbd5e1;padding:5px 7px;vertical-align:top;text-align:left}'+
+        '.hv-tbl thead th{background:'+accent+';color:#fff;font-family:"Kanit",sans-serif;font-weight:500;font-size:10pt;text-align:center}'+
+        '.hv-tbl tbody tr:nth-child(even){background:#f8fafc}'+
+        '.c-no{width:30px;text-align:center}'+
+        '.c-name{width:21%}'+
+        '.c-phone{width:11%;text-align:center}'+
+        '.c-guard{width:25%}'+
+        '.c-addr{width:25%;font-size:9.5pt}'+
+        '.c-qr{width:120px;text-align:center}'+
+        '.hv-nick{color:#6b7280}'+
+        '.hv-contact{padding:1px 0}'+
+        '.hv-contact:not(:last-child){border-bottom:1px dashed #e5e7eb;margin-bottom:2px;padding-bottom:2px}'+
+        '.hv-who{color:#6b7280;font-size:9pt}'+
+        '.hv-qr{width:96px;height:96px;display:block;margin:0 auto;border:1px solid #e5e7eb;border-radius:6px;background:#fff}'+
+        '.hv-coord{font-size:7.5pt;color:#6b7280;margin-top:2px;word-break:break-all}'+
+        '.hv-nopin{font-size:9pt;color:#9ca3af;padding:24px 4px;border:1px dashed #d1d5db;border-radius:6px}'+
+        '.hv-foot{margin-top:10px;text-align:center;font-size:9pt;color:#9ca3af;border-top:1px solid #e5e7eb;padding-top:6px}'+
+        '.toolbar{position:sticky;top:0;background:#1f2937;color:#fff;padding:.6rem 1rem;display:flex;gap:.5rem;align-items:center;flex-wrap:wrap;z-index:10}'+
+        '.toolbar .btn-prim{background:#16a34a;color:#fff;border:none;padding:.5rem 1rem;border-radius:8px;cursor:pointer;font-family:"Kanit",sans-serif;font-size:13pt}'+
+        '.toolbar .tt{flex:1;font-family:"Kanit",sans-serif}'+
+        '@media print{body{background:#fff}.sheet{box-shadow:none;margin:0;width:auto;min-height:auto;padding:0}.no-print{display:none!important}.hv-tbl thead{display:table-header-group}tr{page-break-inside:avoid}}';
+
+      var html = '<!DOCTYPE html><html lang="th"><head><meta charset="UTF-8">'+
+        '<meta name="viewport" content="width=device-width,initial-scale=1">'+
+        '<title>ข้อมูลสรุปสำหรับออกเยี่ยมบ้าน — '+hvEsc(clsLbl)+'</title>'+
+        '<link rel="preconnect" href="https://fonts.googleapis.com">'+
+        '<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>'+
+        '<link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@300;400;500;600;700&family=Kanit:wght@400;500;600;700&display=swap" rel="stylesheet">'+
+        '<style>'+css+'</style></head><body>'+
+        '<div class="toolbar no-print">'+
+          '<span class="tt">🏠 ข้อมูลสรุปสำหรับออกเยี่ยมบ้าน — '+hvEsc(clsLbl)+'</span>'+
+          '<button class="btn-prim" onclick="window.print()">🖨️ พิมพ์ / บันทึก PDF</button>'+
+        '</div>'+
+        '<div class="sheet">'+
+          '<div class="hv-head">'+
+            '<div class="ht"><h1>ข้อมูลสรุปสำหรับออกเยี่ยมบ้านนักเรียน</h1>'+
+              '<div class="sub">'+hvEsc(schoolName)+' &nbsp;•&nbsp; '+hvEsc(clsLbl)+(year?' &nbsp;•&nbsp; ปีการศึกษา '+hvEsc(String(year)):'')+'</div></div>'+
+            '<div class="meta">นักเรียนทั้งหมด '+students.length+' คน<br>'+
+              'ปักหมุดบ้านแล้ว '+pinnedTotal+' / '+students.length+' คน<br>'+
+              'พิมพ์เมื่อ '+today+'</div>'+
+          '</div>'+
+          sectionsHTML+
+          '<div class="hv-foot">เอกสารนี้สร้างจากระบบสารสนเทศชั้นเรียน — QR Code แต่ละช่องเปิดตำแหน่งบ้านนักเรียนใน Google Maps (เฉพาะผู้ที่ปักหมุดบ้านแล้ว)</div>'+
+        '</div>'+
+        '</body></html>';
+
+      var w = window.open('', '_blank');
+      if(!w){ window.showToast('โปรดอนุญาต Pop-up เพื่อเปิดเอกสาร','warning'); return; }
+      w.document.open(); w.document.write(html); w.document.close();
+    }catch(e){
+      window.showLoading && window.showLoading(false);
+      window.showToast('เปิดเอกสารเยี่ยมบ้านไม่สำเร็จ: '+e.message,'error');
+      console.error(e);
     }
   };
 })();
