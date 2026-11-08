@@ -2495,11 +2495,12 @@ window.deleteStudent = async function(classId, studentDocId){
       // ใช้ raw object ตามรูปแบบเดิม (ถ้า A จะมีคอลัมน์ครบ)
       var rows = students.map(function(s, i){
         var base = {
-          'ลำดับ': s.order||i+1,
+          'ลำดับ': (s.order>0&&s.order<1000)?s.order:'',
           'เลขประจำตัวนักเรียน': s.studentId||'',
           'ชื่อ-สกุล': s.fullName||'',
           'ชื่อเล่น': s.nickname||'',
-          'เพศ': s.gender||''
+          'เพศ': s.gender||'',
+          'สถานะ': s.status||'ปกติ'
         };
         // ผสานกับ raw data ของเดิม
         if(s.raw){ Object.assign(base, s.raw); }
@@ -2647,6 +2648,11 @@ window.deleteStudent = async function(classId, studentDocId){
       '<button class="btn btn-warning" id="stPromote">🚀 เปิดเครื่องมือเลื่อนชั้น</button>'+
       '</div>'+
 
+      '<div class="set-section"><h4>✂️ ตัดนักเรียน ย้าย / ลาออก / แขวนลอย แล้วเลื่อนเลขที่</h4>'+
+      '<p class="muted">นักเรียนที่ตั้งสถานะไม่ปกติจะถูกตัดออกจากเลขที่ (ข้อมูลยังอยู่ครบ) แล้วเลื่อนเลขที่คนที่เหลือขึ้นมา — พร้อมข้อความแจ้งเลขที่ใหม่ให้คัดลอกส่งไลน์ ทั้งแบบรวมและแยกห้อง</p>'+
+      '<button class="btn btn-primary" id="stCutStudents">✂️ ตัดนักเรียน + เลื่อนเลขที่</button>'+
+      '</div>'+
+
       '<div class="set-section"><h4>📥 ดาวน์โหลดไฟล์ Template สำหรับ Import</h4>'+
       '<p class="muted">ดาวน์โหลดไฟล์ Excel เปล่าที่มีหัวคอลัมน์ครบตามรูปแบบ A (ใบมอบตัว) — กรอกข้อมูลนักเรียนลงในไฟล์ แล้วนำไป Import ผ่านเมนู "นำเข้ารายชื่อ" ได้ทันที (มีตัวอย่าง 1 แถวให้ดูเป็นแนวทาง)</p>'+
       '<button class="btn" id="stImportTpl">📥 ดาวน์โหลด Template Import (.xlsx)</button>'+
@@ -2702,6 +2708,27 @@ window.deleteStudent = async function(classId, studentDocId){
       '</div></div>';
     document.body.appendChild(bd);
     function close(){ bd.classList.remove('show'); setTimeout(function(){bd.remove()},220); }
+    // ── จัดหมวดหมู่ตั้งค่าเป็นแท็บ ──
+    (function(){
+      var body = bd.querySelector('.modal-body');
+      var secs = Array.prototype.slice.call(body.children).filter(function(e){ return e.classList.contains('set-section'); });
+      var groups = [['⚙️ ทั่วไป',[0,1]],['👥 นักเรียน',[2,3,7,8,9]],['📄 เอกสาร / ฟอร์ม',[4,5,6]],['💾 ระบบ',[10,11]]];
+      if(secs.length!==12) return; // โครงสร้างเปลี่ยน → ไม่จัดแท็บ (แสดงแบบเดิม)
+      var bar = document.createElement('div'); bar.className = 'tk-tabs';
+      var panels = groups.map(function(g, gi){
+        var pn = document.createElement('div'); pn.className = 'tk-tabpanel'; pn.style.display = gi===0 ? '' : 'none';
+        g[1].forEach(function(i){ pn.appendChild(secs[i]); });
+        var b = document.createElement('button'); b.type = 'button'; b.className = 'tk-tab'+(gi===0?' active':''); b.textContent = g[0];
+        b.onclick = function(){
+          Array.prototype.forEach.call(bar.children, function(x){ x.classList.remove('active'); }); b.classList.add('active');
+          panels.forEach(function(x){ x.style.display = 'none'; }); pn.style.display = '';
+        };
+        bar.appendChild(b); return pn;
+      });
+      body.insertBefore(bar, body.firstChild);
+      panels.forEach(function(pn){ body.appendChild(pn); });
+    })();
+    bd.querySelector('#stCutStudents').onclick = function(){ window.openCutStudentsDialog(); };
     bd.querySelector('#stClose').onclick = close;
     bd.querySelector('#stCancel').onclick = close;
     bd.querySelector('#stSave').onclick = async function(){
@@ -3581,7 +3608,7 @@ window.deleteStudent = async function(classId, studentDocId){
               '<div><div class="hc-school">'+window.escHTML(schoolName)+'</div>'+
                 '<div class="hc-cls">QR เติมข้อมูล &nbsp;•&nbsp; '+window.escHTML(clsLbl)+' &nbsp;•&nbsp; ปี '+year+'</div></div>'+
             '</div>'+
-            '<div class="hc-name">'+window.escHTML(s.fullName||'(ไม่มีชื่อ)')+'</div>'+
+            '<div class="hc-name">'+window.escHTML(s.fullName||'(ไม่มีชื่อ)')+window.stuStatusTag(s)+'</div>'+
             '<div class="hc-sub">เลขประจำตัว '+window.escHTML(sid||'—')+(s.order?(' &nbsp;•&nbsp; ลำดับที่ '+s.order):'')+'</div>'+
             missHtml+
             '<div class="hc-tip">🧩 QR ซ้าย = เติมข้อมูลที่ขาด &nbsp;•&nbsp; 📍 QR ขวา = ปักหมุดบ้าน (ยืนที่บ้านแล้วกดปักหมุด)</div>'+
@@ -3744,7 +3771,8 @@ window.deleteStudent = async function(classId, studentDocId){
           var oldSchool = raw['โรงเรียนเดิม']||raw['เดิม']||raw['ชื่อโรงเรียนเดิม']||raw['โรงเรียนที่จบ']||s.currentSchool||'';
           var row = {
             'ห้อง': label,
-            'ลำดับ': s.order||idx+1,
+            'ลำดับ': (s.order>0&&s.order<1000)?s.order:'',
+            'สถานะ': s.status||'ปกติ',
             'เลขประจำตัวนักเรียน': s.studentId||'',
             'ชื่อ-สกุล': s.fullName||'',
             'ชื่อเล่น': s.nickname||'',
@@ -4226,8 +4254,8 @@ window.deleteStudent = async function(classId, studentDocId){
     } else {
       tb.innerHTML = slice.map(function(s){
         var _g = (function(g,name){ if(g && g!=='ไม่ระบุ' && g!=='') return g; var n=String(name||'').trim(); if(/^(เด็กชาย|ด.ช.|นาย)/.test(n)) return 'ชาย'; if(/^(เด็กหญิง|ด.ญ.|นางสาว|นาง)/.test(n)) return 'หญิง'; return g||''; })(s.gender,s.fullName); var gc = _g==='ชาย'?'gender-m':(_g==='หญิง'?'gender-f':'');
-        return '<tr>'+
-          '<td>'+(s.order||'')+'</td>'+
+        return '<tr'+(window.stuIsAbnormal(s)?' data-st="'+window.escHTML(s.status)+'"':'')+'>'+
+          '<td>'+(window.stuIsAbnormal(s)&&!(Number(s.order)>0&&Number(s.order)<1000) ? '—' : (s.order||''))+'</td>'+
           '<td style="text-align:center">'+
           (function(s){
             var src = window.getPhotoSrc(s);
@@ -4242,7 +4270,7 @@ window.deleteStudent = async function(classId, studentDocId){
           })(s)+
           '</td>'+
           '<td>'+window.escHTML(s.studentId||'')+'</td>'+
-          '<td>'+window.escHTML(s.fullName||'')+'</td>'+
+          '<td class="st-nm">'+window.escHTML(s.fullName||'')+window.stuStatusTag(s)+'</td>'+
           '<td>'+window.escHTML(s.nickname||'')+'</td>'+
           '<td class="'+gc+'">'+window.escHTML((function(g,name){
             if(g && g!=='ไม่ระบุ' && g!=='') return g;
@@ -4327,7 +4355,7 @@ window.deleteStudent = async function(classId, studentDocId){
     var raw = s.raw || {};
     var bd = document.createElement('div'); bd.className='modal-bd show';
     bd.innerHTML = '<div class="modal modal-xl" id="stuDtMod">'+
-      '<div class="modal-head"><h3>👤 '+window.escHTML(s.fullName||'')+' &nbsp;<small class="muted" style="font-size:.85rem">เลขประจำตัว '+window.escHTML(s.studentId||'')+'</small></h3>'+
+      '<div class="modal-head"><h3>👤 '+window.escHTML(s.fullName||'')+window.stuStatusTag(s)+' &nbsp;<small class="muted" style="font-size:.85rem">เลขประจำตัว '+window.escHTML(s.studentId||'')+'</small></h3>'+
       '<button class="modal-close" id="dtCl">×</button></div>'+
       '<div class="modal-body">'+
       '<div class="flex flex-wrap mb-2" style="align-items:flex-start;gap:1rem">'+
@@ -4341,7 +4369,7 @@ window.deleteStudent = async function(classId, studentDocId){
             field('ชื่อเล่น', s.nickname||raw['ชื่อเล่น']||'', 'nickname')+
             field('เพศ', s.gender||'', null)+
             field('โทร', s.phone||raw['โทรนักเรียน']||'', 'phone')+
-            field('ลำดับในห้อง', String(s.order||''), null)+
+            field('ลำดับในห้อง', window.stuOrderText(s), null)+
             '<div class="dfield"><div class="lbl">สถานะนักเรียน</div><select class="val" data-edit="status">'+
               ['ปกติ','แขวนลอย','ย้าย','ลาออก'].map(function(o){ return '<option value="'+o+'"'+((s.status||'ปกติ')===o?' selected':'')+'>'+o+'</option>'; }).join('')+'</select></div>'+
           '</div>'+
@@ -4822,7 +4850,7 @@ window.deleteStudent = async function(classId, studentDocId){
 
     // TOC
     var tocRows = sorted.map(function(s, idx){
-      return '<tr><td>'+(idx+1)+'</td><td>'+escH(s.studentId||'')+'</td><td>'+escH(s.fullName||'')+'</td><td>'+(tocStartPage+idx)+'</td></tr>';
+      return '<tr'+(window.stuIsAbnormal(s)?' style="background:#f3f4f6;font-style:italic"':'')+'><td>'+(idx+1)+'</td><td>'+escH(s.studentId||'')+'</td><td>'+escH(s.fullName||'')+window.stuStatusTag(s)+'</td><td>'+(tocStartPage+idx)+'</td></tr>';
     }).join('');
     var tocHTML = '<section class="page">'+
       '<h1 class="page-title">สารบัญรายชื่อนักเรียน</h1>'+
@@ -4983,7 +5011,7 @@ window.deleteStudent = async function(classId, studentDocId){
     var clsLbl = classLabel(info.num, rm.room);
 
     return '<section class="page student-page">'+
-      '<div class="sp-head" style="--accent:'+info.color+'">ลำดับที่ '+(idx+1)+' / '+clsLbl+' ปีการศึกษา '+year+'</div>'+
+      '<div class="sp-head" style="--accent:'+info.color+'">ลำดับที่ '+(idx+1)+' / '+clsLbl+' ปีการศึกษา '+year+window.stuStatusTag(s)+'</div>'+
 
       '<div class="sp-body">'+
         '<div class="sp-top">'+
@@ -7365,6 +7393,18 @@ function printAnalyticsPDF(sections,cur,total,showSummary){
      ฟอนต์: TH SarabunPSK (โฟลเดอร์ fonts/ ใน repo)
      ═══════════════════════════════════════════════════════════════ -->
 <style>
+table.data-tbl tr[data-st="แขวนลอย"] td{background:#fffbeb}
+table.data-tbl tr[data-st="ย้าย"] td{background:#eff6ff}
+table.data-tbl tr[data-st="ลาออก"] td{background:#fef2f2}
+table.data-tbl tr[data-st="ย้าย"] td.st-nm,table.data-tbl tr[data-st="ลาออก"] td.st-nm{text-decoration:line-through;color:#64748b}
+table.data-tbl tr[data-st] td:first-child{box-shadow:inset 4px 0 0 var(--stc,#f59e0b)}
+table.data-tbl tr[data-st="ย้าย"] td:first-child{--stc:#3b82f6}
+table.data-tbl tr[data-st="ลาออก"] td:first-child{--stc:#ef4444}
+.tk-tabs{display:flex;gap:.3rem;flex-wrap:wrap;border-bottom:1px solid var(--border);margin-bottom:1rem}
+.tk-tab{background:none;border:none;padding:.6rem .95rem;font-size:.98rem;cursor:pointer;color:var(--ink-muted);border-bottom:3px solid transparent;font-family:inherit}
+.tk-tab.active{color:#4338ca;border-bottom-color:#4338ca;font-weight:600}
+.tk-card{border:1px solid var(--border);border-radius:12px;padding:.7rem .9rem;margin:.5rem 0;background:#fff}
+.tk-card textarea{width:100%;min-height:120px;border:1px solid var(--border);border-radius:8px;padding:.5rem;font-family:inherit;font-size:.92rem}
 @font-face{font-family:'TH SarabunPSK';src:url('fonts/THSarabun.ttf') format('truetype');font-weight:400;font-style:normal;font-display:swap}
 @font-face{font-family:'TH SarabunPSK';src:url('fonts/THSarabun_Bold.ttf') format('truetype');font-weight:700;font-style:normal;font-display:swap}
 @font-face{font-family:'TH SarabunPSK';src:url('fonts/THSarabun_Italic.ttf') format('truetype');font-weight:400;font-style:italic;font-display:swap}
@@ -7387,6 +7427,14 @@ function printAnalyticsPDF(sections,cur,total,showSummary){
 </style>
 <script>
 (function(){
+  var ST_COLORS = {'แขวนลอย':['#92400e','#fef3c7','#f59e0b'],'ย้าย':['#1e40af','#dbeafe','#3b82f6'],'ลาออก':['#991b1b','#fee2e2','#ef4444']};
+  // ป้ายสถานะแบบ inline (ใช้ได้ทั้งหน้าเว็บและเอกสารที่เปิดหน้าต่างใหม่) — นักเรียนปกติไม่แสดงอะไร
+  window.stuStatusTag = function(s){
+    var c = s && ST_COLORS[s.status]; if(!c) return '';
+    return ' <span style="display:inline-block;font-size:.78em;line-height:1.35;padding:0 .5em;border-radius:999px;font-weight:600;font-style:normal;text-decoration:none;color:'+c[0]+';background:'+c[1]+';border:1px solid '+c[2]+'">'+window.escHTML(s.status)+'</span>';
+  };
+  window.stuIsAbnormal = function(s){ return !!(s && ST_COLORS[s.status]); };
+  window.stuOrderText = function(s){ var o = Number(s && s.order); return (o>0 && o<1000) ? String(o) : '—'; };
   var FONT = 'TH SarabunPSK';
   var STATUSES = ['ปกติ','แขวนลอย','ย้าย','ลาออก'];
   var EXCELJS_URL = 'https://cdn.jsdelivr.net/npm/exceljs@4.4.0/dist/exceljs.min.js';
@@ -7526,7 +7574,8 @@ function printAnalyticsPDF(sections,cur,total,showSummary){
       hc.alignment = {horizontal:'center', vertical:'middle'};
     }
     ws.getRow(4).height = 23.4;
-    var last = Math.max(37, 4+students.length);
+    var last = Math.max(37, 4+students.length), numNo = 0;
+    var ABN_FILL = {'แขวนลอย':'FFFEF3C7','ย้าย':'FFDBEAFE','ลาออก':'FFFEE2E2'};
     for(var r=5;r<=last;r++){
       var s = students[r-5];
       ws.getRow(r).height = 23.4;
@@ -7534,9 +7583,13 @@ function printAnalyticsPDF(sections,cur,total,showSummary){
         var cell = ws.getCell(r,cc); cell.border = BORDER;
         cell.font = (cc===12 || cc>3) ? f16 : f18;
         cell.alignment = {horizontal: cc===3 ? 'left' : 'center', vertical:'middle'};
+        if(s && ABN_FILL[s.status]){
+          cell.fill = {type:'pattern', pattern:'solid', fgColor:{argb:ABN_FILL[s.status]}};
+          cell.font = Object.assign({}, cell.font, {italic:true, color:{argb:'FF475569'}, strike:(s.status!=='แขวนลอย' && cc>=2 && cc<=3)});
+        }
       }
       if(s){
-        ws.getCell(r,1).value = r-4;
+        if(!(Number(s.order)>=1000)) ws.getCell(r,1).value = ++numNo;
         var sid = ws.getCell(r,2); sid.value = String(s.studentId||''); sid.numFmt = '@';
         ws.getCell(r,3).value = String(s.fullName||'').trim();
         ws.getCell(r,12).value = remarkOf(s);
@@ -7571,10 +7624,10 @@ function printAnalyticsPDF(sections,cur,total,showSummary){
       // ชื่อเยอะเกิน 1 หน้า → ลดขนาดแถว/ตัวอักษรลงให้พอดี 1 หน้า (ไม่ต่ำกว่า 40%)
       var k = Math.max(0.4, Math.min(1, AVAIL_MM/(n*ROW_MM)));
       var rowH = (ROW_MM*k).toFixed(2)+'mm', fs = (16*k).toFixed(2)+'pt';
-      var rows = '';
+      var rows = '', numNo = 0;
       for(var i=0;i<n;i++){
-        var s = st[i];
-        rows += '<tr style="height:'+rowH+'"><td class="c" style="width:12mm">'+(s?(i+1):'')+'</td><td class="c" style="width:26mm">'+(s?$esc(s.studentId||''):'')+'</td><td>'+(s?$esc(String(s.fullName||'').trim()):'')+'</td>'+
+        var s = st[i], abn = s && window.stuIsAbnormal(s);
+        rows += '<tr style="height:'+rowH+(abn?';background:#e5e7eb;font-style:italic':'')+'"><td class="c" style="width:12mm">'+(s&&!(Number(s.order)>=1000)?(++numNo):'')+'</td><td class="c" style="width:26mm">'+(s?$esc(s.studentId||''):'')+'</td><td>'+(s?$esc(String(s.fullName||'').trim()):'')+'</td>'+
           '<td style="width:52mm"></td><td class="c" style="width:26mm">'+(s?$esc(remarkOf(s)):'')+'</td></tr>';
       }
       return '<div class="pg"><h1>'+$esc(titleText(rm, allRooms))+'</h1><h2>'+$esc(schoolLine())+'</h2>'+
@@ -8033,6 +8086,110 @@ function printAnalyticsPDF(sections,cur,total,showSummary){
         window.showLoading(false);
         window.showToast('บันทึกแล้ว '+done+' ห้อง'+(skipped?' (ข้าม '+skipped+' ห้องที่รหัสซ้ำ)':''),'success',5000);
         m.close();
+      }catch(e){ window.showLoading(false); console.error(e); window.showToast('บันทึกไม่สำเร็จ: '+e.message,'error',7000); }
+    };
+  };
+  // ═════════════════ 4) ตัดนักเรียนไม่ปกติ + เลื่อนเลขที่ + ข้อความแจ้งเลขที่ใหม่ ═════════════════
+  var CUT_BASE = 1000; // นักเรียนที่ถูกตัดจะมี order = 1000+ (อยู่ท้ายห้อง ไม่นับเป็นเลขที่)
+  function planCut(list, cutStatuses){
+    var sorted = list.slice().sort(function(a,b){ return (Number(a.order)||9999)-(Number(b.order)||9999); });
+    var keep = [], cut = [], alreadyCut = [];
+    sorted.forEach(function(s){
+      if(cutStatuses.indexOf(s.status)>=0){ (Number(s.order)>=CUT_BASE ? alreadyCut : cut).push(s); }
+      else keep.push(s);
+    });
+    var changes = [];
+    keep.forEach(function(s,i){ var no = i+1; if(Number(s.order)!==no) changes.push({s:s, oldNo:Number(s.order)||null, newNo:no}); });
+    var base = CUT_BASE + alreadyCut.length;
+    var cutMoves = cut.map(function(s,j){ return {s:s, oldNo:Number(s.order)||null, newNo:base+j}; });
+    return {keep:keep, cut:cutMoves, changes:changes, alreadyCut:alreadyCut};
+  }
+  function roomMessage(rm, pl, full){
+    var t = '📢 แจ้งเลขที่ใหม่ '+roomLabel(rm)+' ปีการศึกษา '+rm.academicYear+'\n';
+    if(pl.cut.length){
+      t += '\nนักเรียนที่ตัดออก:\n'+pl.cut.map(function(c){ return '• เลขที่ '+(c.oldNo||'-')+' '+String(c.s.fullName||'').trim()+' ('+c.s.status+')'; }).join('\n')+'\n';
+    }
+    if(full){
+      t += '\nรายชื่อและเลขที่ใหม่:\n'+pl.keep.map(function(s,i){ return (i+1)+'. '+String(s.fullName||'').trim(); }).join('\n');
+    } else if(pl.changes.length){
+      t += '\nเลขที่ใหม่ของนักเรียนที่เปลี่ยน:\n'+pl.changes.map(function(c){ return (c.oldNo||'-')+' → '+c.newNo+'  '+String(c.s.fullName||'').trim(); }).join('\n');
+    } else {
+      t += '\nเลขที่ของนักเรียนที่เหลือไม่เปลี่ยนแปลง';
+    }
+    return t.trim();
+  }
+
+  window.openCutStudentsDialog = function(){
+    var rooms = [], dataMap = {}, plans = {}, applied = false;
+    var m = openModal('✂️ ตัดนักเรียน + เลื่อนเลขที่',
+      '<div class="tk-row">'+yearSelect('ctYear')+'</div>'+
+      '<div class="tk-row"><b>ตัดนักเรียนสถานะ:</b>'+['แขวนลอย','ย้าย','ลาออก'].map(function(x){ return '<label><input type="checkbox" data-cs="'+x+'" checked> '+x+'</label>'; }).join('')+'</div>'+
+      '<div class="muted" style="font-size:.88rem;margin-bottom:.5rem">ระบบจะไม่ลบข้อมูล เพียงตัดออกจากเลขที่ (ย้ายไปท้ายห้อง) แล้วเรียงเลขที่คนที่เหลือใหม่เป็น 1, 2, 3, … · ตั้งสถานะนักเรียนก่อนได้ที่หน้ารายละเอียดนักเรียน</div>'+
+      '<div class="tk-sec"><h4>เลือกห้อง</h4><div id="ctRooms"></div></div>'+
+      '<div id="ctOut"></div>',
+      '<button class="btn" id="ctPrev">🔍 ตรวจสอบก่อน</button><button class="btn btn-success" id="ctApply" disabled>✅ ตัดและเลื่อนเลขที่</button><button class="btn" id="ctCa">ปิด</button>');
+    m.q('#ctCa').onclick = m.close;
+    function statuses(){ return m.qa('[data-cs]').filter(function(c){ return c.checked; }).map(function(c){ return c.dataset.cs; }); }
+    async function reload(){
+      rooms = roomsOfYear(m.q('#ctYear').value);
+      m.q('#ctRooms').innerHTML = roomPicker(rooms); wirePicker(m, function(){ m.q('#ctApply').disabled = true; });
+      m.q('#ctOut').innerHTML = ''; applied = false; m.q('#ctApply').disabled = true;
+    }
+    m.q('#ctYear').onchange = reload; reload();
+
+    async function preview(){
+      var sel = pickedRooms(m, rooms), cs = statuses();
+      if(!sel.length || !cs.length){ window.showToast('เลือกห้องและสถานะอย่างน้อย 1 รายการ','warning'); return; }
+      window.showLoading(true,'กำลังตรวจสอบ...');
+      try{ dataMap = await loadStudents(sel); }catch(e){ window.showLoading(false); window.showToast('โหลดข้อมูลไม่สำเร็จ: '+e.message,'error'); return; }
+      window.showLoading(false);
+      plans = {}; var html = '', nCut = 0, nChg = 0;
+      sel.forEach(function(rm){
+        var pl = planCut(dataMap[rm.id]||[], cs); plans[rm.id] = {rm:rm, pl:pl};
+        if(!pl.cut.length && !pl.changes.length) return;
+        nCut += pl.cut.length; nChg += pl.changes.length;
+        html += '<div class="tk-card"><b>'+$esc(roomLabel(rm))+'</b> — ตัด '+pl.cut.length+' คน · เลื่อนเลขที่ '+pl.changes.length+' คน · เหลือ '+pl.keep.length+' คน'+
+          (pl.cut.length?'<div class="muted" style="font-size:.9rem">ตัดออก: '+pl.cut.map(function(c){ return $esc((c.oldNo||'-')+'. '+String(c.s.fullName||'').trim())+(window.stuStatusTag(c.s)); }).join(' · ')+'</div>':'')+'</div>';
+      });
+      m.q('#ctOut').innerHTML = html || '<div class="tk-warn"><b>ไม่พบนักเรียนที่ต้องตัดตามเงื่อนไข</b> (ตรวจสอบว่าตั้งสถานะนักเรียนแล้ว)</div>';
+      m.q('#ctApply').disabled = !(nCut || nChg);
+    }
+    m.q('#ctPrev').onclick = preview;
+
+    function renderResult(){
+      var full = m.q('#ctFull') ? m.q('#ctFull').checked : false;
+      var ids = Object.keys(plans).filter(function(id){ var p = plans[id].pl; return p.cut.length || p.changes.length; });
+      var perRoom = ids.map(function(id){ return {rm:plans[id].rm, text:roomMessage(plans[id].rm, plans[id].pl, full)}; });
+      var all = perRoom.map(function(x){ return x.text; }).join('\n\n━━━━━━━━━━\n\n');
+      m.q('#ctOut').innerHTML = '<div class="tk-ok"><b>✅ บันทึกเรียบร้อย</b> — เลื่อนเลขที่แล้ว คัดลอกข้อความแจ้งได้ด้านล่าง</div>'+
+        '<div class="tk-row" style="margin-top:.5rem"><label><input type="checkbox" id="ctFull"'+(full?' checked':'')+'> ข้อความแบบรายชื่อทั้งห้องพร้อมเลขที่ใหม่ (ไม่เลือก = เฉพาะคนที่เลขที่เปลี่ยน)</label></div>'+
+        '<div class="tk-card"><b>📋 แบบรวมทุกห้อง</b><textarea readonly id="ctAll">'+$esc(all)+'</textarea>'+
+          '<div class="tk-row" style="margin-top:.4rem"><button class="btn btn-sm" id="ctCopyAll">📋 คัดลอกข้อความรวม</button><button class="btn btn-sm" id="ctLineAll">💬 เปิดไลน์</button></div></div>'+
+        perRoom.map(function(x,i){
+          return '<div class="tk-card"><b>📋 '+$esc(roomLabel(x.rm))+'</b><textarea readonly data-t="'+i+'">'+$esc(x.text)+'</textarea>'+
+            '<div class="tk-row" style="margin-top:.4rem"><button class="btn btn-sm" data-cp="'+i+'">📋 คัดลอกห้องนี้</button><button class="btn btn-sm" data-ln="'+i+'">💬 เปิดไลน์</button></div></div>';
+        }).join('');
+      m.q('#ctFull').onchange = renderResult;
+      m.q('#ctCopyAll').onclick = async function(){ window.showToast(await copyText(all) ? 'คัดลอกข้อความรวมแล้ว' : 'คัดลอกไม่สำเร็จ', 'success'); };
+      m.q('#ctLineAll').onclick = function(){ window.open('https://line.me/R/msg/text/?'+encodeURIComponent(all), '_blank'); };
+      m.qa('[data-cp]').forEach(function(b){ b.onclick = async function(){ var x = perRoom[+b.dataset.cp]; window.showToast(await copyText(x.text) ? 'คัดลอก '+roomLabel(x.rm)+' แล้ว' : 'คัดลอกไม่สำเร็จ', 'success'); }; });
+      m.qa('[data-ln]').forEach(function(b){ b.onclick = function(){ window.open('https://line.me/R/msg/text/?'+encodeURIComponent(perRoom[+b.dataset.ln].text), '_blank'); }; });
+    }
+
+    m.q('#ctApply').onclick = async function(){
+      var ok = await window.confirmDialog({title:'ยืนยันการตัดและเลื่อนเลขที่', message:'ตัดนักเรียนที่เลือกออกจากเลขที่ และเรียงเลขที่ใหม่ในห้องที่ตรวจสอบแล้ว ใช่หรือไม่?<br><small>ข้อมูลนักเรียนยังอยู่ครบ</small>', confirmText:'ดำเนินการ'});
+      if(!ok) return;
+      try{
+        window.showLoading(true,'กำลังเลื่อนเลขที่...');
+        for(const id of Object.keys(plans)){
+          var pl = plans[id].pl;
+          for(const c of pl.changes.concat(pl.cut)){ await window.updateStudent(id, c.s.id, {order:c.newNo}); }
+        }
+        window.AppState.studentsCache = {}; applied = true;
+        window.showLoading(false);
+        m.q('#ctApply').disabled = true; m.q('#ctPrev').disabled = true;
+        window.showToast('เลื่อนเลขที่เรียบร้อย','success');
+        renderResult();
       }catch(e){ window.showLoading(false); console.error(e); window.showToast('บันทึกไม่สำเร็จ: '+e.message,'error',7000); }
     };
   };
