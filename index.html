@@ -1120,6 +1120,9 @@ window.deleteStudent = async function(classId, studentDocId){
     else if(act==='openSettings'){ openSettingsModal(); }
     else if(act==='openStudent'){ openStudentDetail(p.studentId); }
     else if(act==='openAnalytics'){ setView('analytics'); }
+    else if(act==='openListExport'){ window.openListExportDialog(); }
+    else if(act==='openCountExport'){ window.openCountExportDialog(); }
+    else if(act==='openFixFromFile'){ window.openFixFromFileDialog(); }
     else if(act==='addStudentManual'){ window.openManualAddStudent(p.classId); }
     else { console.warn('unknown act', act); }
   }
@@ -1155,6 +1158,12 @@ window.deleteStudent = async function(classId, studentDocId){
     html += '<div class="ahc-text"><strong>ดูข้อมูลสารสนเทศนักเรียน</strong>';
     html += '<small>กราฟ/สถิติ โรคประจำตัว · โรงเรียนเดิม · หมู่บ้าน · ศาสนา · อาชีพผู้ปกครอง</small></div>';
     html += '<span class="ahc-arrow">→</span></button>';
+    // ── เครื่องมือใบรายชื่อ / สรุปจำนวน / จัดเลขที่จากไฟล์ ──
+    html += '<div class="tk-home">';
+    html += '<button data-act="openListExport"><span class="ic">📄</span><span><strong>ส่งออกใบรายชื่อนักเรียน</strong><small>Excel / พิมพ์ · ฟอนต์ TH SarabunPSK</small></span></button>';
+    html += '<button data-act="openCountExport"><span class="ic">📊</span><span><strong>ส่งออกจำนวนนักเรียน</strong><small>กรองตามชั้น เพศ สถานะ และแยกรายละเอียด</small></span></button>';
+    html += '<button data-act="openFixFromFile"><span class="ic">🔧</span><span><strong>จัดเลขที่ / แก้รหัสจากไฟล์</strong><small>ตามใบรายชื่อ และไฟล์ LEC (RPT318)</small></span></button>';
+    html += '</div>';
     return html;
   }
 
@@ -4333,6 +4342,8 @@ window.deleteStudent = async function(classId, studentDocId){
             field('เพศ', s.gender||'', null)+
             field('โทร', s.phone||raw['โทรนักเรียน']||'', 'phone')+
             field('ลำดับในห้อง', String(s.order||''), null)+
+            '<div class="dfield"><div class="lbl">สถานะนักเรียน</div><select class="val" data-edit="status">'+
+              ['ปกติ','แขวนลอย','ย้าย','ลาออก'].map(function(o){ return '<option value="'+o+'"'+((s.status||'ปกติ')===o?' selected':'')+'>'+o+'</option>'; }).join('')+'</select></div>'+
           '</div>'+
           '<div class="hint" style="margin-top:.3rem">⚠️ การแก้ไขเลขประจำตัวจะย้ายรหัสเอกสารในฐานข้อมูลให้อัตโนมัติ — ห้ามซ้ำกับนักเรียนคนอื่นในห้อง</div>'+
         '</div>'+
@@ -4540,7 +4551,7 @@ window.deleteStudent = async function(classId, studentDocId){
     bd.querySelector('#dtSv').onclick = async function(){
       var patch = {};
       var rawPatch = Object.assign({}, raw);
-      bd.querySelectorAll('input[data-edit]').forEach(function(i){
+      bd.querySelectorAll('input[data-edit],select[data-edit]').forEach(function(i){
         patch[i.dataset.edit] = i.value.trim();
       });
       bd.querySelectorAll('input[data-edit-raw]').forEach(function(i){
@@ -7349,5 +7360,618 @@ function printAnalyticsPDF(sections,cur,total,showSummary){
   };
 })();
 </script>
+<!-- ═══════════════════════════════════════════════════════════════
+     โมดูลเสริม: ส่งออกใบรายชื่อ (xlsx/พิมพ์) · ส่งออกจำนวนนักเรียนแบบกรอง · จัดเลขที่/แก้รหัสจากไฟล์
+     ฟอนต์: TH SarabunPSK (โฟลเดอร์ fonts/ ใน repo)
+     ═══════════════════════════════════════════════════════════════ -->
+<style>
+@font-face{font-family:'TH SarabunPSK';src:url('fonts/THSarabun.ttf') format('truetype');font-weight:400;font-style:normal;font-display:swap}
+@font-face{font-family:'TH SarabunPSK';src:url('fonts/THSarabun_Bold.ttf') format('truetype');font-weight:700;font-style:normal;font-display:swap}
+@font-face{font-family:'TH SarabunPSK';src:url('fonts/THSarabun_Italic.ttf') format('truetype');font-weight:400;font-style:italic;font-display:swap}
+@font-face{font-family:'TH SarabunPSK';src:url('fonts/THSarabun_BoldItalic.ttf') format('truetype');font-weight:700;font-style:italic;font-display:swap}
+.tk-home{display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:.8rem;margin-top:1rem}
+.tk-home button{display:flex;align-items:center;gap:.8rem;text-align:left;background:var(--surface);border:1px solid var(--border);border-radius:var(--r-lg);padding:1rem 1.1rem;cursor:pointer;font-family:inherit;transition:.2s}
+.tk-home button:hover{border-color:#6366f1;box-shadow:0 6px 18px rgba(99,102,241,.15);transform:translateY(-1px)}
+.tk-home .ic{font-size:1.8rem}.tk-home strong{display:block;color:var(--ink)}.tk-home small{color:var(--ink-muted)}
+.tk-sec{margin-bottom:1rem}.tk-sec h4{margin:0 0 .4rem;font-size:1rem}
+.tk-grp{display:flex;flex-wrap:wrap;gap:.35rem .9rem;align-items:center;padding:.4rem .6rem;border:1px solid var(--border);border-radius:10px;margin-bottom:.4rem}
+.tk-grp b{min-width:3.2rem}
+.tk-grp label,.tk-row label{display:inline-flex;align-items:center;gap:.3rem;cursor:pointer;font-size:.95rem}
+.tk-row{display:flex;flex-wrap:wrap;gap:.6rem 1.2rem;align-items:center;margin-bottom:.5rem}
+.tk-row select,.tk-row input[type=file]{padding:.35rem .5rem;border:1px solid var(--border-strong);border-radius:8px;background:#fff;font-family:inherit}
+.tk-tbl{width:100%;border-collapse:collapse;margin:.4rem 0 1rem;font-size:.92rem}
+.tk-tbl th,.tk-tbl td{border:1px solid var(--border);padding:.3rem .5rem;text-align:center}
+.tk-tbl th{background:#eef2ff}.tk-tbl td:first-child{text-align:left}.tk-tbl tr.tot td{font-weight:700;background:#f8fafc}
+.tk-box{max-height:260px;overflow:auto;border:1px solid var(--border);border-radius:10px;padding:.4rem}
+.tk-ok{color:#15803d}.tk-warn{color:#b45309}.tk-bad{color:#b91c1c}
+</style>
+<script>
+(function(){
+  var FONT = 'TH SarabunPSK';
+  var STATUSES = ['ปกติ','แขวนลอย','ย้าย','ลาออก'];
+  var EXCELJS_URL = 'https://cdn.jsdelivr.net/npm/exceljs@4.4.0/dist/exceljs.min.js';
+  var $esc = function(s){ return window.escHTML(s); };
+
+  // ───────── helpers ─────────
+  function loadExcelJS(){
+    if(window.ExcelJS) return Promise.resolve(window.ExcelJS);
+    return new Promise(function(res, rej){
+      var sc = document.createElement('script');
+      sc.src = EXCELJS_URL;
+      sc.onload = function(){ window.ExcelJS ? res(window.ExcelJS) : rej(new Error('โหลด ExcelJS ไม่สำเร็จ')); };
+      sc.onerror = function(){ rej(new Error('โหลด ExcelJS ไม่สำเร็จ (ตรวจสอบอินเทอร์เน็ต)')); };
+      document.head.appendChild(sc);
+    });
+  }
+  function download(buf, filename){
+    var blob = new Blob([buf], {type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
+    var a = document.createElement('a');
+    a.href = URL.createObjectURL(blob); a.download = filename;
+    document.body.appendChild(a); a.click();
+    setTimeout(function(){ URL.revokeObjectURL(a.href); a.remove(); }, 1000);
+  }
+  function gradeNum(g){ var i = window.GRADE_INFO[g]; return i ? i.num : String(g||''); }
+  function roomNum(r){ var n = parseInt(r,10); return isNaN(n) ? 0 : n; }
+  function normName(s){ return String(s||'').replace(/[\s​]+/g,''); }
+  function genderOf(s){
+    var g = s.gender;
+    if(g==='ชาย' || g==='หญิง') return g;
+    var n = String(s.fullName||'').trim();
+    if(/^(เด็กชาย|ด\.ช\.|นาย)/.test(n)) return 'ชาย';
+    if(/^(เด็กหญิง|ด\.ญ\.|นางสาว|นาง)/.test(n)) return 'หญิง';
+    return '';
+  }
+  function statusOf(s){ return STATUSES.indexOf(s.status)>=0 ? s.status : 'ปกติ'; }
+  function years(){
+    var set = {};
+    (window.AppState.classrooms||[]).forEach(function(c){ if(c.academicYear!=null) set[c.academicYear] = true; });
+    var cur = (window.AppState.settings||{}).currentAcademicYear;
+    if(cur!=null) set[cur] = true;
+    return Object.keys(set).sort(function(a,b){ return b-a; });
+  }
+  function roomsOfYear(year){
+    return (window.AppState.classrooms||[]).filter(function(c){ return String(c.academicYear)===String(year); })
+      .sort(function(a,b){ return (gradeNum(a.grade)-gradeNum(b.grade)) || (roomNum(a.room)-roomNum(b.room)); });
+  }
+  function hasMultiRooms(rooms, rm){ return rooms.filter(function(c){ return c.grade===rm.grade; }).length>1; }
+  function roomLabel(rm){ return window.classLabel(gradeNum(rm.grade), rm.room); }
+  async function loadStudents(rooms){
+    var out = {};
+    await Promise.all(rooms.map(async function(rm){
+      var arr = await window.getStudentsOfClass(rm.id, true);
+      arr.sort(function(a,b){ return (Number(a.order)||9999)-(Number(b.order)||9999); });
+      out[rm.id] = arr;
+    }));
+    return out;
+  }
+  function openModal(title, body, foot){
+    var bd = document.createElement('div'); bd.className = 'modal-bd show';
+    bd.innerHTML = '<div class="modal modal-xl"><div class="modal-head"><h3>'+title+'</h3><button class="modal-close" data-x>×</button></div>'+
+      '<div class="modal-body">'+body+'</div>'+
+      '<div style="padding:.8rem 1.2rem;display:flex;gap:.5rem;justify-content:flex-end;flex-wrap:wrap;border-top:1px solid var(--border)">'+foot+'</div></div>';
+    document.body.appendChild(bd);
+    function close(){ bd.classList.remove('show'); setTimeout(function(){ bd.remove(); }, 220); }
+    bd.querySelector('[data-x]').onclick = close;
+    return {bd:bd, close:close, q:function(s){ return bd.querySelector(s); }, qa:function(s){ return Array.prototype.slice.call(bd.querySelectorAll(s)); }};
+  }
+  function yearSelect(id){
+    var cur = (window.AppState.settings||{}).currentAcademicYear;
+    return '<label>ปีการศึกษา <select id="'+id+'">'+years().map(function(y){
+      return '<option value="'+y+'"'+(String(y)===String(cur)?' selected':'')+'>'+y+'</option>';
+    }).join('')+'</select></label>';
+  }
+  function roomPicker(rooms){
+    if(!rooms.length) return '<div class="muted">ยังไม่มีห้องเรียนในปีการศึกษานี้</div>';
+    var byGrade = {};
+    rooms.forEach(function(rm){ (byGrade[rm.grade] = byGrade[rm.grade] || []).push(rm); });
+    var html = '<div class="tk-row"><label><input type="checkbox" data-all checked> <b>เลือกทุกห้อง</b></label></div>';
+    Object.keys(byGrade).sort(function(a,b){ return gradeNum(a)-gradeNum(b); }).forEach(function(g){
+      html += '<div class="tk-grp"><b>ม.'+gradeNum(g)+'</b>'+byGrade[g].map(function(rm){
+        return '<label><input type="checkbox" data-room="'+$esc(rm.id)+'" checked> '+$esc(roomLabel(rm))+' ('+(rm.studentCount||0)+')</label>';
+      }).join('')+'</div>';
+    });
+    return html;
+  }
+  function wirePicker(m, onChange){
+    var all = m.q('[data-all]');
+    if(all) all.onchange = function(){ m.qa('[data-room]').forEach(function(c){ c.checked = all.checked; }); onChange && onChange(); };
+    m.qa('[data-room]').forEach(function(c){ c.onchange = function(){
+      if(all) all.checked = m.qa('[data-room]').every(function(x){ return x.checked; });
+      onChange && onChange();
+    }; });
+  }
+  function pickedRooms(m, rooms){
+    var ids = {}; m.qa('[data-room]').forEach(function(c){ if(c.checked) ids[c.dataset.room] = true; });
+    return rooms.filter(function(r){ return ids[r.id]; });
+  }
+  function thaiToday(){ return new Date().toLocaleDateString('th-TH',{day:'numeric',month:'long',year:'numeric'}); }
+  var THIN = {style:'thin', color:{argb:'FF000000'}};
+  var BORDER = {top:THIN, left:THIN, bottom:THIN, right:THIN};
+
+  // ═════════════════ 1) ส่งออกใบรายชื่อ ═════════════════
+  function advisorText(rm){
+    var names = (rm.advisors||[]).map(function(a){ return String(a.name||'').trim(); }).filter(Boolean);
+    if(!names.length) return 'ครูที่ปรึกษา -';
+    if(names.length===1) return 'ครูที่ปรึกษา '+names[0];
+    return 'ครูที่ปรึกษา '+names.slice(0,-1).join(' ')+' และ'+names[names.length-1];
+  }
+  function sheetTitle(rm, rooms){ return 'ชั้น ม.'+gradeNum(rm.grade)+(hasMultiRooms(rooms,rm) ? '-'+(rm.room||'') : ''); }
+  function titleText(rm, rooms){
+    return 'ใบรายชื่อนักเรียนชั้นมัธยมศึกษาปีที่ '+gradeNum(rm.grade)+(hasMultiRooms(rooms,rm) ? '/'+(rm.room||'') : '')+' ปีการศึกษา '+rm.academicYear;
+  }
+  function schoolLine(){
+    var n = String((window.AppState.settings||{}).schoolName||'').trim() || 'โรงเรียนกระดุมทองวิทยา';
+    return n+' สังกัดองค์การบริหารส่วนจังหวัดศรีสะเกษ';
+  }
+  function remarkOf(s){ var st = statusOf(s); return st==='ปกติ' ? '' : st; }
+
+  function addClassSheet(wb, rm, students, allRooms){
+    var ws = wb.addWorksheet(sheetTitle(rm, allRooms), {
+      pageSetup:{paperSize:9, orientation:'portrait', fitToPage:true, fitToWidth:1, fitToHeight:0, horizontalCentered:true,
+        margins:{left:0.59, right:0.39, top:0.47, bottom:0.47, header:0.3, footer:0.3}}
+    });
+    var widths = [8.9, 13.5, 30].concat([5.8,5.8,5.8,5.8,5.8,5.8,5.8,5.8]).concat([14.4]);
+    widths.forEach(function(w,i){ ws.getColumn(i+1).width = w; });
+    var f18 = {name:FONT, size:18}, f18b = {name:FONT, size:18, bold:true}, f16 = {name:FONT, size:16};
+    var lines = [titleText(rm, allRooms), schoolLine(), advisorText(rm)];
+    lines.forEach(function(t,i){
+      var r = i+1; ws.mergeCells(r,1,r,12);
+      var c = ws.getCell(r,1); c.value = t; c.font = f18b; c.alignment = {horizontal:'center', vertical:'middle'};
+      ws.getRow(r).height = 23.4;
+    });
+    for(var c3=1;c3<=12;c3++) ws.getCell(3,c3).border = {bottom:THIN};
+    var head = {1:'เลขที่', 2:'เลขประจำตัว', 3:'ชื่อ - สกุล', 12:'หมายเหตุ'};
+    for(var c=1;c<=12;c++){
+      var hc = ws.getCell(4,c); hc.value = head[c] || null; hc.font = f18b; hc.border = BORDER;
+      hc.alignment = {horizontal:'center', vertical:'middle'};
+    }
+    ws.getRow(4).height = 23.4;
+    var last = Math.max(37, 4+students.length);
+    for(var r=5;r<=last;r++){
+      var s = students[r-5];
+      ws.getRow(r).height = 23.4;
+      for(var cc=1;cc<=12;cc++){
+        var cell = ws.getCell(r,cc); cell.border = BORDER;
+        cell.font = (cc===12 || cc>3) ? f16 : f18;
+        cell.alignment = {horizontal: cc===3 ? 'left' : 'center', vertical:'middle'};
+      }
+      if(s){
+        ws.getCell(r,1).value = r-4;
+        var sid = ws.getCell(r,2); sid.value = String(s.studentId||''); sid.numFmt = '@';
+        ws.getCell(r,3).value = String(s.fullName||'').trim();
+        ws.getCell(r,12).value = remarkOf(s);
+      }
+    }
+    ws.pageSetup.printArea = 'A1:L'+last;
+    return ws;
+  }
+
+  async function buildListWorkbook(rooms, studentsMap, allRooms){
+    var EJ = await loadExcelJS();
+    var wb = new EJ.Workbook();
+    wb.creator = 'ระบบสารสนเทศชั้นเรียน'; wb.created = new Date();
+    rooms.forEach(function(rm){ addClassSheet(wb, rm, studentsMap[rm.id]||[], allRooms); });
+    return wb;
+  }
+
+  function printHtml(rooms, studentsMap, allRooms){
+    var base = function(f){ return new URL('fonts/'+f, document.baseURI).href; };
+    var css = "@font-face{font-family:'TH SarabunPSK';src:url('"+base('THSarabun.ttf')+"');font-weight:400}"+
+      "@font-face{font-family:'TH SarabunPSK';src:url('"+base('THSarabun_Bold.ttf')+"');font-weight:700}"+
+      "@page{size:A4 portrait;margin:12mm 10mm}body{font-family:'TH SarabunPSK',sans-serif;font-size:16pt;margin:0}"+
+      ".pg{page-break-after:always}.pg:last-child{page-break-after:auto}h1,h2,h3{font-size:16pt;text-align:center;margin:0;line-height:1.35}"+
+      "table{width:100%;border-collapse:collapse;margin-top:2mm}td,th{border:1px solid #000;height:8.2mm;padding:0 2mm;font-size:16pt}"+
+      "th{font-weight:700}td.c{text-align:center}.tb{position:fixed;top:0;right:0;background:#fff;padding:6px}@media print{.tb{display:none}}";
+    var body = rooms.map(function(rm){
+      var st = studentsMap[rm.id]||[]; var n = Math.max(33, st.length);
+      var rows = '';
+      for(var i=0;i<n;i++){
+        var s = st[i];
+        rows += '<tr><td class="c" style="width:12mm">'+(s?(i+1):'')+'</td><td class="c" style="width:26mm">'+(s?$esc(s.studentId||''):'')+'</td><td>'+(s?$esc(String(s.fullName||'').trim()):'')+'</td>'+
+          '<td style="width:60mm"></td><td class="c" style="width:26mm">'+(s?$esc(remarkOf(s)):'')+'</td></tr>';
+      }
+      return '<div class="pg"><h1 style="font-weight:700">'+$esc(titleText(rm, allRooms))+'</h1><h2 style="font-weight:700">'+$esc(schoolLine())+'</h2>'+
+        '<h3 style="font-weight:700">'+$esc(advisorText(rm))+'</h3><table><thead><tr><th>เลขที่</th><th>เลขประจำตัว</th><th>ชื่อ - สกุล</th><th></th><th>หมายเหตุ</th></tr></thead><tbody>'+rows+'</tbody></table></div>';
+    }).join('');
+    var w = window.open('', '_blank');
+    if(!w){ window.showToast('เบราว์เซอร์บล็อกหน้าต่างใหม่ — กรุณาอนุญาต pop-up','warning'); return; }
+    w.document.write('<!DOCTYPE html><html lang="th"><head><meta charset="utf-8"><title>ใบรายชื่อนักเรียน</title><style>'+css+'</style></head><body>'+
+      '<div class="tb"><button onclick="window.print()">🖨 พิมพ์</button></div>'+body+'</body></html>');
+    w.document.close();
+  }
+
+  window.openListExportDialog = function(){
+    var rooms = [];
+    var m = openModal('📄 ส่งออกใบรายชื่อนักเรียน',
+      '<div class="tk-sec"><div class="tk-row">'+yearSelect('lxYear')+'</div>'+
+      '<div class="muted" style="font-size:.9rem">ได้ไฟล์ Excel (.xlsx) หน้าตาตามใบรายชื่อเดิม — 1 ห้อง 1 ชีต ไม่มีหน้าตารางสรุป · ฟอนต์ TH SarabunPSK · เลขที่เรียงตามลำดับในระบบ · หมายเหตุแสดงสถานะ (แขวนลอย/ย้าย/ลาออก)</div></div>'+
+      '<div class="tk-sec"><h4>เลือกห้องที่ต้องการ</h4><div id="lxRooms"></div></div>'+
+      '<div class="tk-sec"><label><input type="checkbox" id="lxIncMoved"> รวมนักเรียนที่ <b>ย้าย/ลาออก</b> ในใบรายชื่อด้วย (ปกติจะไม่รวม)</label></div>',
+      '<button class="btn" id="lxPrint">🖨 พิมพ์ / PDF</button><button class="btn btn-success" id="lxGo">📤 ส่งออก Excel</button><button class="btn" id="lxCa">ปิด</button>');
+    function refresh(){
+      rooms = roomsOfYear(m.q('#lxYear').value);
+      m.q('#lxRooms').innerHTML = roomPicker(rooms); wirePicker(m);
+    }
+    m.q('#lxYear').onchange = refresh; refresh();
+    m.q('#lxCa').onclick = m.close;
+    async function prepare(){
+      var sel = pickedRooms(m, rooms);
+      if(!sel.length){ window.showToast('กรุณาเลือกอย่างน้อย 1 ห้อง','warning'); return null; }
+      window.showLoading(true,'กำลังโหลดรายชื่อ...');
+      var map = await loadStudents(sel);
+      window.showLoading(false);
+      var inc = m.q('#lxIncMoved').checked;
+      sel.forEach(function(rm){
+        map[rm.id] = (map[rm.id]||[]).filter(function(s){ var st = statusOf(s); return inc || (st!=='ย้าย' && st!=='ลาออก'); });
+      });
+      return {sel:sel, map:map};
+    }
+    m.q('#lxGo').onclick = async function(){
+      try{
+        var p = await prepare(); if(!p) return;
+        window.showLoading(true,'กำลังสร้างไฟล์ Excel...');
+        var wb = await buildListWorkbook(p.sel, p.map, rooms);
+        var buf = await wb.xlsx.writeBuffer();
+        download(buf, 'ใบรายชื่อนักเรียน_ปี'+m.q('#lxYear').value+'.xlsx');
+        window.showLoading(false);
+        window.showToast('ส่งออกใบรายชื่อ '+p.sel.length+' ห้องแล้ว','success');
+      }catch(e){ window.showLoading(false); console.error(e); window.showToast('ส่งออกไม่สำเร็จ: '+e.message,'error',6000); }
+    };
+    m.q('#lxPrint').onclick = async function(){
+      try{ var p = await prepare(); if(p) printHtml(p.sel, p.map, rooms); }
+      catch(e){ window.showLoading(false); window.showToast('ผิดพลาด: '+e.message,'error'); }
+    };
+  };
+
+  // ═════════════════ 2) ส่งออกจำนวนนักเรียนแบบกรอง ═════════════════
+  var DIMS = {
+    room:        {label:'ชั้น/ห้อง (ตารางสรุปแบบเดิม)'},
+    religion:    {label:'ศาสนา',            get:function(r){ return r['ศาสนานักเรียน']||r['ศาสนา']; }},
+    oldSchool:   {label:'โรงเรียนเดิม',      get:function(r){ return r['โรงเรียนเดิม']||r['ชื่อโรงเรียนเดิม']||r['โรงเรียนที่จบ']||r['เดิม']; }},
+    village:     {label:'หมู่บ้าน',          get:function(r){ return r['ชื่อหมู่บ้านนักเรียน']||r['หมู่บ้านนักเรียน']; }},
+    tambon:      {label:'ตำบล',              get:function(r){ return r['ตำบลนักเรียน']; }},
+    amphoe:      {label:'อำเภอ',             get:function(r){ return r['อำเภอนักเรียน']; }},
+    disease:     {label:'โรคประจำตัว',       get:function(r){ return r['โรคประจำตัว']; }},
+    guardianRel: {label:'ความสัมพันธ์ผู้ปกครอง', get:function(r){ return r['ความสัมพันธ์ผู้ปกครอง']; }},
+    guardianJob: {label:'อาชีพผู้ปกครอง',    get:function(r){ return r['อาชีพผู้ปกครอง']; }},
+    parentStatus:{label:'สถานภาพบิดา-มารดา', get:function(r){ return r['สถานภาพบิดา-มารดา']; }},
+    status:      {label:'สถานะนักเรียน',     get:function(r,s){ return statusOf(s); }}
+  };
+
+  function tally(list){
+    var t = {m:0, f:0, real:0, sus:0, mov:0, out:0, all:list.length};
+    list.forEach(function(s){
+      var st = statusOf(s), g = genderOf(s);
+      if(st==='ปกติ'){ t.real++; if(g==='ชาย') t.m++; else if(g==='หญิง') t.f++; }
+      else if(st==='แขวนลอย') t.sus++; else if(st==='ย้าย') t.mov++; else if(st==='ลาออก') t.out++;
+    });
+    return t;
+  }
+  function buildBlocks(entries, f){
+    // entries: [{rm, list}] (กรองแล้ว) ; f: {dim}
+    var blocks = [];
+    if(f.dim==='room'){
+      var H = ['ชั้น/ห้อง','ชาย','หญิง','ตามจริง','แขวนลอย','ย้าย','ลาออก','ทั้งหมดในระบบ'];
+      var rows = [], tot = {m:0,f:0,real:0,sus:0,mov:0,out:0,all:0};
+      var lo = {m:0,f:0,real:0,sus:0,mov:0,out:0,all:0}, hi = {m:0,f:0,real:0,sus:0,mov:0,out:0,all:0};
+      entries.forEach(function(e){
+        var t = tally(e.list);
+        rows.push([roomLabel(e.rm), t.m, t.f, t.real, t.sus, t.mov, t.out, t.all]);
+        var tgt = gradeNum(e.rm.grade)<=3 ? lo : hi;
+        Object.keys(t).forEach(function(k){ tot[k]+=t[k]; tgt[k]+=t[k]; });
+      });
+      var mk = function(label,t){ return [label,t.m,t.f,t.real,t.sus,t.mov,t.out,t.all]; };
+      blocks.push({title:'สรุปรวม', headers:['รายการ','ม.ต้น','ม.ปลาย','รวม'], rows:[
+        ['จำนวนนักเรียนชาย (ปกติ)', lo.m, hi.m, tot.m], ['จำนวนนักเรียนหญิง (ปกติ)', lo.f, hi.f, tot.f],
+        ['จำนวนนักเรียนตามจริง', lo.real, hi.real, tot.real], ['แขวนลอย', lo.sus, hi.sus, tot.sus],
+        ['ย้าย', lo.mov, hi.mov, tot.mov], ['ลาออก', lo.out, hi.out, tot.out], ['ทั้งหมดในระบบ', lo.all, hi.all, tot.all]
+      ]});
+      blocks.push({title:'จำนวนนักเรียนแยกตามห้อง', headers:H, rows:rows, total:mk('รวม', tot)});
+    } else {
+      var d = DIMS[f.dim], map = {}, gradesSeen = {};
+      entries.forEach(function(e){
+        e.list.forEach(function(s){
+          var v = String(d.get(s.raw||{}, s)||'').trim() || 'ไม่ระบุ';
+          var o = map[v] = map[v] || {m:0,f:0,all:0,g:{}};
+          var g = genderOf(s); if(g==='ชาย') o.m++; else if(g==='หญิง') o.f++;
+          o.all++; var gn = gradeNum(e.rm.grade); o.g[gn] = (o.g[gn]||0)+1; gradesSeen[gn] = true;
+        });
+      });
+      var gl = Object.keys(gradesSeen).sort();
+      var rws = Object.keys(map).sort(function(a,b){ return map[b].all-map[a].all || a.localeCompare(b,'th'); }).map(function(k){
+        var o = map[k]; return [k, o.m, o.f, o.all].concat(gl.map(function(g){ return o.g[g]||0; }));
+      });
+      var tt = [ 'รวม' ]; for(var i=1;i<rws[0]?.length;i++){ tt.push(rws.reduce(function(a,r){ return a+r[i]; },0)); }
+      blocks.push({title:'จำนวนนักเรียนแยกตาม'+d.label, headers:['รายการ','ชาย','หญิง','รวม'].concat(gl.map(function(g){ return 'ม.'+g; })), rows:rws, total: rws.length?tt:null});
+    }
+    return blocks;
+  }
+  function blocksHtml(blocks){
+    return blocks.map(function(b){
+      var h = '<h4 style="margin:.6rem 0 0">'+$esc(b.title)+'</h4><div style="overflow:auto"><table class="tk-tbl"><thead><tr>'+b.headers.map(function(x){ return '<th>'+$esc(x)+'</th>'; }).join('')+'</tr></thead><tbody>';
+      b.rows.forEach(function(r){ h += '<tr>'+r.map(function(x){ return '<td>'+$esc(x)+'</td>'; }).join('')+'</tr>'; });
+      if(b.total) h += '<tr class="tot">'+b.total.map(function(x){ return '<td>'+$esc(x)+'</td>'; }).join('')+'</tr>';
+      if(!b.rows.length) h += '<tr><td colspan="'+b.headers.length+'" class="muted">ไม่พบข้อมูลตามเงื่อนไข</td></tr>';
+      return h+'</tbody></table></div>';
+    }).join('');
+  }
+
+  window.openCountExportDialog = function(){
+    var rooms = [], dataMap = {}, loadedYear = null;
+    var m = openModal('📊 ส่งออกจำนวนนักเรียน (กรองได้)',
+      '<div class="tk-row">'+yearSelect('cxYear')+
+        '<label>เพศ <select id="cxGender"><option value="">ทั้งหมด</option><option>ชาย</option><option>หญิง</option></select></label>'+
+        '<label>แยกตาม <select id="cxDim">'+Object.keys(DIMS).map(function(k){ return '<option value="'+k+'">'+$esc(DIMS[k].label)+'</option>'; }).join('')+'</select></label></div>'+
+      '<div class="tk-row"><b>สถานะ:</b>'+STATUSES.map(function(s){ return '<label><input type="checkbox" data-st="'+s+'" checked> '+s+'</label>'; }).join('')+'</div>'+
+      '<div class="tk-sec"><h4>ชั้น/ห้อง</h4><div id="cxRooms"></div></div>'+
+      '<div id="cxOut"></div>',
+      '<button class="btn btn-success" id="cxGo">📤 ส่งออก Excel</button><button class="btn" id="cxCa">ปิด</button>');
+    var blocks = [];
+    function filterDesc(){
+      var sts = m.qa('[data-st]').filter(function(c){ return c.checked; }).map(function(c){ return c.dataset.st; });
+      var g = m.q('#cxGender').value;
+      return 'ปีการศึกษา '+m.q('#cxYear').value+' · เพศ: '+(g||'ทั้งหมด')+' · สถานะ: '+(sts.length===4?'ทั้งหมด':sts.join(', ')||'-')+' · แยกตาม: '+DIMS[m.q('#cxDim').value].label;
+    }
+    function recompute(){
+      var sel = pickedRooms(m, rooms);
+      var g = m.q('#cxGender').value;
+      var sts = m.qa('[data-st]').filter(function(c){ return c.checked; }).map(function(c){ return c.dataset.st; });
+      var entries = sel.map(function(rm){
+        return {rm:rm, list:(dataMap[rm.id]||[]).filter(function(s){ return (!g || genderOf(s)===g) && sts.indexOf(statusOf(s))>=0; })};
+      });
+      blocks = buildBlocks(entries, {dim:m.q('#cxDim').value});
+      m.q('#cxOut').innerHTML = '<div class="muted" style="font-size:.88rem">'+$esc(filterDesc())+'</div>'+blocksHtml(blocks)+
+        '<div class="muted" style="font-size:.82rem">หมายเหตุ: ชาย/หญิง นับเฉพาะนักเรียนสถานะ "ปกติ" · "ตามจริง" = จำนวนที่มีตัวตนจริง · "ทั้งหมดในระบบ" = รวมแขวนลอย/ย้าย/ลาออก</div>';
+    }
+    async function reload(){
+      var y = m.q('#cxYear').value;
+      rooms = roomsOfYear(y);
+      m.q('#cxRooms').innerHTML = roomPicker(rooms); wirePicker(m, recompute);
+      m.q('#cxOut').innerHTML = '<div class="muted">กำลังโหลด...</div>';
+      try{ dataMap = await loadStudents(rooms); loadedYear = y; }catch(e){ m.q('#cxOut').innerHTML = '<div class="tk-bad">โหลดข้อมูลไม่สำเร็จ: '+$esc(e.message)+'</div>'; return; }
+      recompute();
+    }
+    m.q('#cxYear').onchange = reload;
+    ['#cxGender','#cxDim'].forEach(function(s){ m.q(s).onchange = recompute; });
+    m.qa('[data-st]').forEach(function(c){ c.onchange = recompute; });
+    m.q('#cxCa').onclick = m.close;
+    m.q('#cxGo').onclick = async function(){
+      try{
+        if(!blocks.length){ window.showToast('ยังไม่มีข้อมูลให้ส่งออก','warning'); return; }
+        window.showLoading(true,'กำลังสร้างไฟล์ Excel...');
+        var EJ = await loadExcelJS(); var wb = new EJ.Workbook();
+        var ws = wb.addWorksheet('สรุปจำนวนนักเรียน', {pageSetup:{paperSize:9, orientation:'portrait', fitToPage:true, fitToWidth:1, fitToHeight:0}});
+        var ncol = Math.max.apply(null, blocks.map(function(b){ return b.headers.length; }));
+        ws.getColumn(1).width = 34; for(var c=2;c<=ncol;c++) ws.getColumn(c).width = 13;
+        var r = 1;
+        function line(text, size, bold){
+          ws.mergeCells(r,1,r,ncol); var cell = ws.getCell(r,1); cell.value = text;
+          cell.font = {name:FONT, size:size, bold:!!bold}; cell.alignment = {horizontal:'center'}; r++;
+        }
+        line('ระบบสรุปข้อมูลนักเรียน '+schoolLine().split(' สังกัด')[0], 18, true);
+        line('ข้อมูล ณ วันที่ '+thaiToday(), 16, false);
+        line(filterDesc(), 14, false); r++;
+        blocks.forEach(function(b){
+          var t = ws.getCell(r,1); t.value = b.title; t.font = {name:FONT, size:16, bold:true}; r++;
+          b.headers.forEach(function(h,i){
+            var cell = ws.getCell(r,i+1); cell.value = h; cell.font = {name:FONT, size:16, bold:true}; cell.border = BORDER;
+            cell.alignment = {horizontal:'center'}; cell.fill = {type:'pattern', pattern:'solid', fgColor:{argb:'FFE0E7FF'}};
+          }); r++;
+          b.rows.concat(b.total?[b.total]:[]).forEach(function(row, ri){
+            var isTot = b.total && ri===b.rows.length;
+            row.forEach(function(v,i){
+              var cell = ws.getCell(r,i+1); cell.value = v; cell.border = BORDER;
+              cell.font = {name:FONT, size:16, bold:!!isTot}; cell.alignment = {horizontal: i===0?'left':'center'};
+            }); r++;
+          });
+          r++;
+        });
+        var note = ws.getCell(r,1); note.value = 'หมายเหตุ: ชาย/หญิง นับเฉพาะสถานะ "ปกติ" · ตามจริง = จำนวนที่มีตัวตนจริง · ทั้งหมดในระบบ = รวมแขวนลอย/ย้าย/ลาออก';
+        note.font = {name:FONT, size:14, italic:true};
+        var buf = await wb.xlsx.writeBuffer();
+        download(buf, 'สรุปจำนวนนักเรียน_ปี'+m.q('#cxYear').value+'.xlsx');
+        window.showLoading(false); window.showToast('ส่งออกสรุปจำนวนนักเรียนแล้ว','success');
+      }catch(e){ window.showLoading(false); console.error(e); window.showToast('ส่งออกไม่สำเร็จ: '+e.message,'error',6000); }
+    };
+    reload();
+  };
+
+  // ═════════════════ 3) จัดเลขที่ + แก้รหัสประจำตัวจากไฟล์ ═════════════════
+  function readFileBuf(file){
+    return new Promise(function(res, rej){
+      var fr = new FileReader(); fr.onerror = function(){ rej(new Error('อ่านไฟล์ไม่ได้')); };
+      fr.onload = function(e){ res(new Uint8Array(e.target.result)); }; fr.readAsArrayBuffer(file);
+    });
+  }
+  // อ่านใบรายชื่อ (xlsx/xlsm): คืน [{grade:'m6', room:'', rows:[{no,sid,name,remark}]}]
+  async function parseRosterFile(file){
+    var wb = XLSX.read(await readFileBuf(file), {type:'array'});
+    var out = [];
+    wb.SheetNames.forEach(function(nm){
+      var mt = nm.match(/ชั้น\s*ม\.?\s*([1-6])(?:\s*[-\/]\s*(\d+))?/);
+      if(!mt) return;
+      var aoa = XLSX.utils.sheet_to_json(wb.Sheets[nm], {header:1, defval:''});
+      var hr = -1; for(var i=0;i<Math.min(aoa.length,12);i++){ if(String(aoa[i][0]).indexOf('เลขที่')>=0){ hr = i; break; } }
+      if(hr<0) return;
+      var remarkCol = aoa[hr].findIndex(function(x){ return String(x).indexOf('หมายเหตุ')>=0; });
+      var rows = [];
+      for(var r=hr+1;r<aoa.length;r++){
+        var row = aoa[r], no = parseInt(row[0],10), name = String(row[2]||'').trim();
+        if(isNaN(no) || !name) continue;
+        rows.push({no:no, sid:String(row[1]||'').trim(), name:name, remark: remarkCol>=0 ? String(row[remarkCol]||'').trim() : ''});
+      }
+      out.push({grade:'m'+mt[1], room:mt[2]||'', rows:rows, sheet:nm});
+    });
+    return out;
+  }
+
+  window.openFixFromFileDialog = function(){
+    var rooms = [], dataMap = {};
+    var m = openModal('🔧 จัดเลขที่ / แก้รหัสประจำตัวจากไฟล์',
+      '<div class="tk-row">'+yearSelect('ffYear')+'</div>'+
+      '<div class="tk-sec"><h4>① ใบรายชื่อ (.xlsx / .xlsm) — จัดเลขที่ตามไฟล์</h4><div class="tk-row"><input type="file" id="ffRoster" accept=".xlsx,.xlsm,.xls">'+
+        '<label><input type="checkbox" id="ffStatus" checked> นำ "แขวนลอย/ย้าย/ลาออก" จากช่องหมายเหตุมาตั้งเป็นสถานะด้วย</label>'+
+        '<label><input type="checkbox" id="ffRosterSid"> ใช้เลขประจำตัวจากใบรายชื่อแก้ด้วย (กรณีไม่มีไฟล์ LEC)</label></div></div>'+
+      '<div class="tk-sec"><h4>② ไฟล์ LEC/RPT318 (.xls) — แก้เลขประจำตัวนักเรียนให้ตรงตามไฟล์</h4><div class="tk-row"><input type="file" id="ffLec" accept=".xls,.xlsx"></div>'+
+        '<div class="muted" style="font-size:.88rem">จับคู่นักเรียนด้วยเลขบัตรประชาชน ถ้าไม่มีจึงใช้ชื่อ-สกุล · ใช้ได้ทั้ง 2 ไฟล์พร้อมกัน หรือเลือกเพียงไฟล์เดียว</div></div>'+
+      '<div id="ffOut"></div>',
+      '<button class="btn" id="ffPrev">🔍 ตรวจสอบก่อน</button><button class="btn btn-success" id="ffApply" disabled>✅ บันทึกการเปลี่ยนแปลง</button><button class="btn" id="ffCa">ปิด</button>');
+    m.q('#ffCa').onclick = m.close;
+    var plan = null;
+
+    async function buildPlan(){
+      var year = m.q('#ffYear').value; rooms = roomsOfYear(year);
+      var fRoster = m.q('#ffRoster').files[0], fLec = m.q('#ffLec').files[0];
+      if(!fRoster && !fLec){ window.showToast('เลือกไฟล์อย่างน้อย 1 ไฟล์','warning'); return null; }
+      window.showLoading(true,'กำลังอ่านไฟล์และข้อมูลในระบบ...');
+      try{
+        dataMap = await loadStudents(rooms);
+        var lec = fLec ? await window.readLECFile(fLec) : null;
+        var roster = fRoster ? await parseRosterFile(fRoster) : null;
+        // changes: classId -> {docId -> {newSid,newOrder,newStatus,s}}
+        var ch = {}, notes = [], report = {lec:0, ord:0, st:0};
+        function chg(rm, s){ var c = ch[rm.id] = ch[rm.id]||{}; return c[s.id] = c[s.id]||{s:s, rm:rm}; }
+        function findRooms(grade, room){
+          var rg = rooms.filter(function(r){ return r.grade===grade; });
+          if(room!=='' && room!=null){ var x = rg.filter(function(r){ return roomNum(r.room)===roomNum(room); }); if(x.length) return x; }
+          return rg;
+        }
+        // ── ② LEC: แก้เลขประจำตัว ──
+        if(lec){
+          lec.forEach(function(it){
+            var rr = findRooms(it.grade, it.room);
+            if(rr.length>1) rr = rr.filter(function(r){ return roomNum(r.room)===roomNum(it.room); });
+            if(!rr.length){ notes.push('LEC: ไม่พบห้อง '+it.grade+'/'+it.room+' ในระบบ — ข้าม '+it.student.fullName); return; }
+            var rm = rr[0], list = dataMap[rm.id]||[], st = it.student;
+            var nid = String((st.raw&&st.raw['เลขบัตรนักเรียน'])||'').replace(/[^0-9]/g,'');
+            var hit = null;
+            if(nid) hit = list.find(function(x){ return String((x.raw&&x.raw['เลขบัตรนักเรียน'])||'').replace(/[^0-9]/g,'')===nid; });
+            if(!hit) hit = list.find(function(x){ return normName(x.fullName)===normName(st.fullName); });
+            if(!hit){ notes.push('LEC: ไม่พบ "'+st.fullName+'" ในห้อง '+roomLabel(rm)+' ของระบบ'); return; }
+            if(String(hit.studentId||'').trim()!==String(st.studentId||'').trim()){
+              chg(rm,hit).newSid = String(st.studentId||'').trim(); report.lec++;
+            }
+          });
+        }
+        // ── ① ใบรายชื่อ: เลขที่ (+สถานะ) ──
+        if(roster){
+          var useSid = m.q('#ffRosterSid').checked, useSt = m.q('#ffStatus').checked;
+          roster.forEach(function(sh){
+            var rr = findRooms(sh.grade, sh.room);
+            if(!rr.length){ notes.push('ใบรายชื่อ: ชีต "'+sh.sheet+'" ไม่มีห้องตรงกันในระบบ'); return; }
+            if(rr.length>1){ notes.push('ใบรายชื่อ: ชีต "'+sh.sheet+'" มีหลายห้อง แต่ไม่ได้ระบุห้อง — ข้าม (ตั้งชื่อชีตเป็น "ชั้น ม.N-ห้อง")'); return; }
+            var rm = rr[0], list = dataMap[rm.id]||[], used = {};
+            sh.rows.forEach(function(row){
+              var hit = list.find(function(x){
+                var cs = (ch[rm.id]&&ch[rm.id][x.id]&&ch[rm.id][x.id].newSid) || String(x.studentId||'').trim();
+                return !used[x.id] && row.sid && cs===row.sid;
+              });
+              if(!hit) hit = list.find(function(x){ return !used[x.id] && normName(x.fullName)===normName(row.name); });
+              if(!hit) hit = list.find(function(x){ return !used[x.id] && normName(row.name).replace(/^(นาย|เด็กชาย|เด็กหญิง|นางสาว)\1/,'$1')===normName(x.fullName); });
+              if(!hit){ notes.push('ใบรายชื่อ '+sh.sheet+': ไม่พบ "'+row.name+'" ('+row.sid+') ในระบบ'); return; }
+              used[hit.id] = true;
+              var c = chg(rm,hit);
+              c.fileNo = row.no;
+              if(Number(hit.order)!==row.no){ c.newOrder = row.no; report.ord++; }
+              if(useSid && row.sid && !c.newSid && String(hit.studentId||'').trim()!==row.sid){ c.newSid = row.sid; report.lec++; }
+              if(useSt){
+                var rk = STATUSES.find(function(s){ return s!=='ปกติ' && row.remark.indexOf(s)>=0; });
+                var want = rk || null;
+                if(want && statusOf(hit)!==want){ c.newStatus = want; report.st++; }
+              }
+            });
+            list.forEach(function(x){ if(!used[x.id]) notes.push('ระบบมี "'+x.fullName+'" ('+roomLabel(rm)+') แต่ไม่อยู่ในใบรายชื่อ — คงไว้ต่อท้าย'); });
+          });
+        }
+        window.showLoading(false);
+        return {ch:ch, notes:notes, report:report};
+      }catch(e){ window.showLoading(false); throw e; }
+    }
+
+    function renderPlan(p){
+      var html = '', total = 0, hasChange = false;
+      var clash = [];
+      Object.keys(p.ch).forEach(function(cid){
+        var rm = rooms.find(function(r){ return r.id===cid; });
+        var list = dataMap[cid]||[];
+        var finalSid = {};
+        list.forEach(function(s){ var c = p.ch[cid][s.id]; var sid = (c&&c.newSid) || String(s.studentId||'').trim(); if(sid) (finalSid[sid] = finalSid[sid]||[]).push(s.fullName); });
+        Object.keys(finalSid).forEach(function(k){ if(finalSid[k].length>1) clash.push(roomLabel(rm)+': รหัส '+k+' ซ้ำ ('+finalSid[k].join(', ')+')'); });
+      });
+      p.clash = clash;
+      var rowsHtml = '';
+      Object.keys(p.ch).forEach(function(cid){
+        var rm = rooms.find(function(r){ return r.id===cid; });
+        Object.keys(p.ch[cid]).forEach(function(did){
+          var c = p.ch[cid][did];
+          if(c.newSid==null && c.newOrder==null && c.newStatus==null) return;
+          hasChange = true; total++;
+          if(total<=300) rowsHtml += '<tr><td>'+$esc(roomLabel(rm))+'</td><td style="text-align:left">'+$esc(c.s.fullName)+'</td>'+
+            '<td>'+(c.newOrder!=null?$esc((c.s.order||'-')+' → '+c.newOrder):'—')+'</td>'+
+            '<td>'+(c.newSid!=null?$esc((c.s.studentId||'-')+' → '+c.newSid):'—')+'</td>'+
+            '<td>'+(c.newStatus!=null?$esc(c.newStatus):'—')+'</td></tr>';
+        });
+      });
+      html += '<div class="'+(hasChange?'tk-ok':'tk-warn')+'"><b>'+(hasChange?'พบรายการที่จะเปลี่ยน '+total+' คน':'ไม่พบสิ่งที่ต้องเปลี่ยน — ข้อมูลตรงกับไฟล์แล้ว')+'</b> (เลขที่ '+p.report.ord+' · รหัส '+p.report.lec+' · สถานะ '+p.report.st+')</div>';
+      if(hasChange) html += '<div class="tk-box"><table class="tk-tbl" style="margin:0"><thead><tr><th>ห้อง</th><th>ชื่อ-สกุล</th><th>เลขที่</th><th>เลขประจำตัว</th><th>สถานะ</th></tr></thead><tbody>'+rowsHtml+'</tbody></table>'+(total>300?'<div class="muted">แสดง 300 รายการแรก</div>':'')+'</div>';
+      if(clash.length) html += '<div class="tk-bad" style="margin-top:.5rem"><b>⛔ พบรหัสซ้ำ — ห้องเหล่านี้จะไม่ถูกบันทึก:</b><br>'+clash.map($esc).join('<br>')+'</div>';
+      if(p.notes.length) html += '<details style="margin-top:.5rem"><summary class="tk-warn">⚠️ ข้อสังเกต '+p.notes.length+' รายการ</summary><div class="tk-box" style="font-size:.88rem">'+p.notes.map($esc).join('<br>')+'</div></details>';
+      m.q('#ffOut').innerHTML = html;
+      m.q('#ffApply').disabled = !hasChange;
+    }
+
+    m.q('#ffPrev').onclick = async function(){
+      try{ plan = await buildPlan(); if(plan) renderPlan(plan); }
+      catch(e){ console.error(e); window.showToast('อ่านไฟล์ไม่สำเร็จ: '+e.message,'error',6000); }
+    };
+
+    m.q('#ffApply').onclick = async function(){
+      if(!plan) return;
+      var ok = await window.confirmDialog({title:'ยืนยันการบันทึก', message:'บันทึกเลขที่/เลขประจำตัว/สถานะตามที่แสดงลงฐานข้อมูล?<br><small>รูปนักเรียนและข้อมูลอื่นจะถูกเก็บไว้ครบ</small>', confirmText:'บันทึก'});
+      if(!ok) return;
+      try{
+        window.showLoading(true,'กำลังบันทึก...');
+        var done = 0, skipped = 0;
+        for(const cid of Object.keys(plan.ch)){
+          var rm = rooms.find(function(r){ return r.id===cid; });
+          if(plan.clash.some(function(t){ return t.indexOf(roomLabel(rm)+':')===0; })){ skipped++; continue; }
+          var list = (dataMap[cid]||[]).map(function(s){ return Object.assign({}, s); });
+          var cmap = plan.ch[cid], sidChanged = false;
+          list.forEach(function(s){
+            var c = cmap[s.id]; if(!c) return;
+            if(c.newOrder!=null) s.order = c.newOrder;
+            if(c.newStatus!=null) s.status = c.newStatus;
+            if(c.newSid!=null){ s.studentId = c.newSid; s.raw = Object.assign({}, s.raw||{}, {'เลขประจำตัวนักเรียน':c.newSid}); sidChanged = true; }
+          });
+          // นักเรียนที่ไม่อยู่ในไฟล์ → ต่อท้าย (เรียงตามลำดับเดิม)
+          var inFile = {}; Object.keys(cmap).forEach(function(id){ if(cmap[id].fileNo!=null) inFile[id] = true; });
+          if(Object.keys(inFile).length){
+            var maxNo = 0; Object.keys(inFile).forEach(function(id){ maxNo = Math.max(maxNo, cmap[id].fileNo); });
+            var rest = list.filter(function(s){ return !inFile[s.id]; }).sort(function(a,b){ return (Number(a.order)||9999)-(Number(b.order)||9999); });
+            rest.forEach(function(s,i){ if(Number(s.order)!==maxNo+i+1){ s.order = maxNo+i+1; var c = cmap[s.id] = cmap[s.id]||{s:s,rm:rm}; c.newOrder = s.order; } });
+          }
+          if(sidChanged){
+            // เปลี่ยนรหัส → ต้องย้าย document ID ใช้ bulkSaveStudents (เขียนใหม่ก่อน ลบเก่าทีหลัง)
+            var toSave = list.map(function(s){ var x = Object.assign({}, s); delete x.id; return x; });
+            await window.bulkSaveStudents(cid, toSave);
+          } else {
+            for(const s of list){
+              var c2 = cmap[s.id]; if(!c2 || (c2.newOrder==null && c2.newStatus==null)) continue;
+              var patch = {}; if(c2.newOrder!=null) patch.order = c2.newOrder; if(c2.newStatus!=null) patch.status = c2.newStatus;
+              await window.updateStudent(cid, s.id, patch);
+            }
+          }
+          done++;
+        }
+        window.AppState.studentsCache = {};
+        window.showLoading(false);
+        window.showToast('บันทึกแล้ว '+done+' ห้อง'+(skipped?' (ข้าม '+skipped+' ห้องที่รหัสซ้ำ)':''),'success',5000);
+        m.close();
+      }catch(e){ window.showLoading(false); console.error(e); window.showToast('บันทึกไม่สำเร็จ: '+e.message,'error',7000); }
+    };
+  };
+})();
+</script>
+
 </body>
 </html>
