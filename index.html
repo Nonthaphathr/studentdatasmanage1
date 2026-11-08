@@ -7703,6 +7703,52 @@ function printAnalyticsPDF(sections,cur,total,showSummary){
     }).join('');
   }
 
+  var KEEP_ZERO = ['ชาย','หญิง','ตามจริง','รวม','ทั้งหมดในระบบ','ม.ต้น','ม.ปลาย'];
+  function blocksToText(blocks, desc){
+    var t = '📊 สรุปจำนวนนักเรียน\n'+schoolLine().split(' สังกัด')[0]+'\nข้อมูล ณ วันที่ '+thaiToday()+'\n'+desc+'\n';
+    blocks.forEach(function(b){
+      t += '\n■ '+b.title+'\n';
+      b.rows.concat(b.total?[b.total]:[]).forEach(function(r){
+        var parts = [];
+        for(var i=1;i<r.length;i++){
+          if(!r[i] && KEEP_ZERO.indexOf(b.headers[i])<0) continue;
+          parts.push(b.headers[i]+' '+r[i]);
+        }
+        t += r[0]+': '+(parts.join(' · ')||'-')+'\n';
+      });
+    });
+    return t.trim();
+  }
+  async function copyText(text){
+    try{ await navigator.clipboard.writeText(text); return true; }
+    catch(e){
+      var ta = document.createElement('textarea'); ta.value = text; ta.style.cssText = 'position:fixed;opacity:0';
+      document.body.appendChild(ta); ta.select(); var ok = false;
+      try{ ok = document.execCommand('copy'); }catch(_){}
+      ta.remove(); return ok;
+    }
+  }
+  function blocksPrintHtml(blocks, desc){
+    var base = function(f){ return new URL('fonts/'+f, document.baseURI).href; };
+    var css = "@font-face{font-family:'TH SarabunPSK';src:url('"+base('THSarabun.ttf')+"');font-weight:400}"+
+      "@font-face{font-family:'TH SarabunPSK';src:url('"+base('THSarabun_Bold.ttf')+"');font-weight:700}"+
+      "@page{size:A4 portrait;margin:14mm 12mm}body{font-family:'TH SarabunPSK',sans-serif;font-size:16pt;margin:0}"+
+      "h1,h2,p{text-align:center;margin:0;line-height:1.3}h1{font-size:20pt}h2{font-size:17pt;text-align:left;margin-top:5mm}p{font-size:14pt}"+
+      "table{width:100%;border-collapse:collapse;margin-top:2mm;page-break-inside:avoid}td,th{border:1px solid #000;padding:.5mm 2mm;text-align:center;font-size:15pt}th{font-weight:700;background:#e5e7eb}td:first-child{text-align:left}tr.tot td{font-weight:700}"+
+      ".note{font-size:12pt;font-style:italic;margin-top:4mm}.tb{position:fixed;top:0;right:0;background:#fff;padding:6px}@media print{.tb{display:none}}";
+    var body = '<h1>ระบบสรุปข้อมูลนักเรียน '+$esc(schoolLine().split(' สังกัด')[0])+'</h1><p>ข้อมูล ณ วันที่ '+$esc(thaiToday())+'</p><p>'+$esc(desc)+'</p>'+
+      blocks.map(function(b){
+        var h = '<h2>'+$esc(b.title)+'</h2><table><thead><tr>'+b.headers.map(function(x){ return '<th>'+$esc(x)+'</th>'; }).join('')+'</tr></thead><tbody>';
+        b.rows.forEach(function(r){ h += '<tr>'+r.map(function(x){ return '<td>'+$esc(x)+'</td>'; }).join('')+'</tr>'; });
+        if(b.total) h += '<tr class="tot">'+b.total.map(function(x){ return '<td>'+$esc(x)+'</td>'; }).join('')+'</tr>';
+        return h+'</tbody></table>';
+      }).join('')+'<div class="note">หมายเหตุ: ชาย/หญิง นับเฉพาะสถานะ "ปกติ" · ตามจริง = จำนวนที่มีตัวตนจริง · ทั้งหมดในระบบ = รวมแขวนลอย/ย้าย/ลาออก</div>';
+    var w = window.open('', '_blank');
+    if(!w){ window.showToast('เบราว์เซอร์บล็อกหน้าต่างใหม่ — กรุณาอนุญาต pop-up','warning'); return; }
+    w.document.write('<!DOCTYPE html><html lang="th"><head><meta charset="utf-8"><title>สรุปจำนวนนักเรียน</title><style>'+css+'</style></head><body><div class="tb"><button onclick="window.print()">🖨 พิมพ์ / บันทึกเป็น PDF</button></div>'+body+'</body></html>');
+    w.document.close();
+  }
+
   window.openCountExportDialog = function(){
     var rooms = [], dataMap = {}, loadedYear = null;
     var m = openModal('📊 ส่งออกจำนวนนักเรียน (กรองได้)',
@@ -7712,7 +7758,7 @@ function printAnalyticsPDF(sections,cur,total,showSummary){
       '<div class="tk-row"><b>สถานะ:</b>'+STATUSES.map(function(s){ return '<label><input type="checkbox" data-st="'+s+'" checked> '+s+'</label>'; }).join('')+'</div>'+
       '<div class="tk-sec"><h4>ชั้น/ห้อง</h4><div id="cxRooms"></div></div>'+
       '<div id="cxOut"></div>',
-      '<button class="btn btn-success" id="cxGo">📤 ส่งออก Excel</button><button class="btn" id="cxCa">ปิด</button>');
+      '<button class="btn" id="cxCopy">📋 คัดลอก (ส่งไลน์)</button><button class="btn" id="cxLine">💬 เปิดไลน์</button><button class="btn" id="cxPdf">📄 ส่งออก PDF</button><button class="btn btn-success" id="cxGo">📤 ส่งออก Excel</button><button class="btn" id="cxCa">ปิด</button>');
     var blocks = [];
     function filterDesc(){
       var sts = m.qa('[data-st]').filter(function(c){ return c.checked; }).map(function(c){ return c.dataset.st; });
@@ -7742,6 +7788,19 @@ function printAnalyticsPDF(sections,cur,total,showSummary){
     ['#cxGender','#cxDim'].forEach(function(s){ m.q(s).onchange = recompute; });
     m.qa('[data-st]').forEach(function(c){ c.onchange = recompute; });
     m.q('#cxCa').onclick = m.close;
+    m.q('#cxCopy').onclick = async function(){
+      if(!blocks.length){ window.showToast('ยังไม่มีข้อมูล','warning'); return; }
+      var ok = await copyText(blocksToText(blocks, filterDesc()));
+      window.showToast(ok ? 'คัดลอกแล้ว — นำไปวางในไลน์ได้เลย' : 'คัดลอกไม่สำเร็จ',(ok?'success':'error'));
+    };
+    m.q('#cxLine').onclick = function(){
+      if(!blocks.length){ window.showToast('ยังไม่มีข้อมูล','warning'); return; }
+      window.open('https://line.me/R/msg/text/?'+encodeURIComponent(blocksToText(blocks, filterDesc())), '_blank');
+    };
+    m.q('#cxPdf').onclick = function(){
+      if(!blocks.length){ window.showToast('ยังไม่มีข้อมูล','warning'); return; }
+      blocksPrintHtml(blocks, filterDesc());
+    };
     m.q('#cxGo').onclick = async function(){
       try{
         if(!blocks.length){ window.showToast('ยังไม่มีข้อมูลให้ส่งออก','warning'); return; }
