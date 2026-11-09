@@ -4078,14 +4078,44 @@ window.deleteStudent = async function(classId, studentDocId){
         window.showToast('สำรองข้อมูลผิดพลาด: '+e.message,'error');
       }
     }
+    var deleteLeft = false;
     async function runCommit(){
       if(!preview){ window.showToast('กรุณากด "ดูตัวอย่าง" ก่อน','warning'); return; }
       if(preview.warnings.length){ window.showToast('กรุณาแก้ไขปัญหาก่อนยืนยัน','warning'); return; }
+      // ตรวจนักเรียนย้าย/ลาออกที่ยังไม่ถูกลบ → ถามให้ลบก่อนเลื่อนชั้น
+      deleteLeft = false;
+      try {
+        window.showLoading(true,'กำลังตรวจนักเรียนย้าย/ลาออก...');
+        var leftN = 0, leftTr = 0, leftDr = 0, leftRooms = [];
+        for(var li=0; li<plan.length; li++){
+          if(!plan[li].included) continue;
+          var ls = await window.getStudentsOfClass(plan[li].src.id, true);
+          var t = 0, d = 0;
+          ls.forEach(function(x){ if(x.status==='ย้าย') t++; else if(x.status==='ลาออก') d++; });
+          if(t+d){ leftN += t+d; leftTr += t; leftDr += d; leftRooms.push(window.classLabel(plan[li].src.grade, plan[li].src.room)+' ('+(t+d)+' คน)'); }
+        }
+        window.showLoading(false);
+        if(leftN){
+          var del = await window.confirmDialog({
+            title:'พบนักเรียนย้าย/ลาออกที่ยังไม่ได้ลบ',
+            message:'ยังมีนักเรียนสถานะ <strong>ย้าย '+leftTr+' คน</strong> และ <strong>ลาออก '+leftDr+' คน</strong> (รวม '+leftN+' คน) ค้างอยู่ในห้องที่จะเลื่อนชั้น<br>'+
+              '<div style="margin:.5rem 0;font-size:.9em;color:#475569">'+leftRooms.map(window.escHTML).join('<br>')+'</div>'+
+              'ต้องการ <strong>ลบนักเรียนกลุ่มนี้ก่อนเลื่อนชั้น</strong> หรือไม่?<br>'+
+              '<span style="font-size:.9em;color:#475569">• ลบ = ไม่ถูกย้ายไปปีใหม่/ไม่ถูกนับเป็นผู้สำเร็จการศึกษา และเลขที่ที่เหลือจะเรียงใหม่<br>• ไม่ลบ = ย้ายไปพร้อมนักเรียนคนอื่นตามเดิม</span>',
+            confirmText:'ลบก่อนเลื่อนชั้น', cancelText:'ไม่ลบ (เลื่อนไปทั้งหมด)', danger:true
+          });
+          deleteLeft = !!del;
+        }
+      } catch(e){
+        window.showLoading(false);
+        console.warn('left-over check failed', e);
+      }
       var ok = await window.confirmDialog({
         title:'ยืนยันเลื่อนชั้น',
         message:'<strong>การเลื่อนชั้นเป็นการกระทำที่ย้อนกลับไม่ได้</strong><br>'+
           'นักเรียน '+preview.movingCount+' คน จะถูกย้ายไปยังห้องปลายทาง<br>'+
           'นักเรียน '+preview.graduateCount+' คน (ม.6) จะถูกย้ายไปยังผู้สำเร็จการศึกษา<br>'+
+          (deleteLeft ? '<span style="color:#b91c1c">นักเรียนสถานะย้าย/ลาออกที่ค้างอยู่จะถูกลบ ไม่ถูกย้ายต่อ</span><br>' : '')+
           'ห้องต้นทางทั้งหมดจะถูกลบ<br><br>'+
           'พิมพ์ <code style="background:#fee2e2;padding:2px 6px;border-radius:4px;font-weight:600">ยืนยัน</code> เพื่อดำเนินการ',
         confirmText:'เลื่อนชั้น', danger:true, requireType:'ยืนยัน'
@@ -4116,6 +4146,17 @@ window.deleteStudent = async function(classId, studentDocId){
         if(!row.included) continue;
         var srcId = row.src.id;
         var students = await window.getStudentsOfClass(srcId, true);
+        if(deleteLeft){
+          // ตัดนักเรียนย้าย/ลาออกออก แล้วเรียงเลขที่คนที่เหลือใหม่ (ไม่นับคนที่ตัดเลขที่ไว้ order>=1000)
+          students = students.filter(function(x){ return x.status!=='ย้าย' && x.status!=='ลาออก'; });
+          var seq = 0;
+          students.slice().sort(function(a,b){ return (a.order||0)-(b.order||0); }).forEach(function(x){
+            if((x.order||0) < 1000) x.order = ++seq;
+          });
+          var mc = students.filter(function(x){ return x.gender==='ชาย' || x.gender==='M'; }).length;
+          var fc = students.filter(function(x){ return x.gender==='หญิง' || x.gender==='F'; }).length;
+          row.src = Object.assign({}, row.src, {maleCount: mc, femaleCount: fc});
+        }
 
         if(row.isGraduate){
           // Move to graduates collection (snapshot)
@@ -4323,6 +4364,9 @@ window.deleteStudent = async function(classId, studentDocId){
         el.onclick = function(){
           if(el.dataset.act==='showPhone'){
             window.showPhoneModal(el.dataset);
+          } else if(el.dataset.act==='suspendLetter'){
+            var _st = TBL_STATE.all.find(function(x){return x.id===el.dataset.docid});
+            if(_st) window.openSuspendLetterDialog(_st, TBL_STATE.classId || window.AppState.currentClassId);
           } else {
             window.openStudentDetail(el.dataset.docid);
           }
@@ -4386,6 +4430,8 @@ window.deleteStudent = async function(classId, studentDocId){
               ['ปกติ','แขวนลอย','ย้าย','ลาออก'].map(function(o){ return '<option value="'+o+'"'+((s.status||'ปกติ')===o?' selected':'')+'>'+o+'</option>'; }).join('')+'</select></div>'+
             '<div class="dfield" id="dtStDateBox" style="display:'+((s.status==='ย้าย'||s.status==='ลาออก')?'':'none')+'"><div class="lbl" id="dtStDateLbl">'+(s.status==='ลาออก'?'วันที่ลาออก':'วันที่ย้ายออก')+'</div>'+
               '<input type="date" class="val" id="dtStDate" value="'+window.escHTML(s.statusDate||'')+'"></div>'+
+            '<div class="dfield" id="dtLetterBox" style="display:'+((s.status==='แขวนลอย')?'':'none')+'"><div class="lbl">หนังสือติดตาม</div>'+
+              '<button type="button" class="btn btn-sm" id="dtLetter">📄 สร้างหนังสือติดตาม</button></div>'+
             '<div class="dfield" id="dtTinBox" style="display:'+((!s.status||s.status==='ปกติ')?'':'none')+'"><div class="lbl">ย้ายเข้าระหว่างเทอม</div>'+
               '<label style="display:flex;align-items:center;gap:.4rem;cursor:pointer"><input type="checkbox" id="dtTin" style="width:auto"'+(s.transferIn?' checked':'')+'> ย้ายเข้าระหว่างเทอม</label>'+
               '<input type="date" class="val" id="dtTinDate" style="margin-top:.3rem;display:'+(s.transferIn?'':'none')+'" value="'+window.escHTML(s.transferInDate||'')+'"></div>'+
@@ -4597,11 +4643,13 @@ window.deleteStudent = async function(classId, studentDocId){
         bd.querySelector('#dtStDateBox').style.display = (v==='ย้าย'||v==='ลาออก') ? '' : 'none';
         bd.querySelector('#dtStDateLbl').textContent = v==='ลาออก' ? 'วันที่ลาออก' : 'วันที่ย้ายออก';
         bd.querySelector('#dtTinBox').style.display = v==='ปกติ' ? '' : 'none';
+        bd.querySelector('#dtLetterBox').style.display = v==='แขวนลอย' ? '' : 'none';
         bd.querySelector('#dtTinDate').style.display = tin.checked ? '' : 'none';
       }
       sel.onchange = sync; tin.onchange = sync;
     })();
     bd.querySelector('#dtCl').onclick = close;
+    bd.querySelector('#dtLetter').onclick = function(){ window.openSuspendLetterDialog(s, classId); };
     bd.querySelector('#dtCa').onclick = close;
 
     bd.querySelector('#dtSv').onclick = async function(){
@@ -7479,6 +7527,9 @@ table.data-tbl tr[data-st="ลาออก"] td:first-child{--stc:#ef4444}
     var h = '', abn = window.stuIsAbnormal(s);
     if(abn){
       h += window.stuStatusTag(s).trim();
+      if(s.status==='แขวนลอย' && s.id){
+        h += '<div style="margin-top:2px"><button class="btn btn-sm" style="padding:0 .5rem;font-size:.78rem" data-act="suspendLetter" data-docid="'+window.escHTML(s.id)+'" title="สร้างหนังสือติดตาม">📄 หนังสือติดตาม</button></div>';
+      }
       if((s.status==='ย้าย'||s.status==='ลาออก')){
         h += '<div style="font-size:.8rem;color:#475569;margin-top:2px">'+(s.statusDate ? 'เมื่อ '+window.escHTML(window.stuDateTh(s.statusDate)) : '<span style="color:#94a3b8">ไม่ระบุวันที่</span>')+'</div>';
       }
@@ -8337,6 +8388,179 @@ table.data-tbl tr[data-st="ลาออก"] td:first-child{--stc:#ef4444}
       }catch(e){ window.showLoading(false); console.error(e); window.showToast('ส่งออกไม่สำเร็จ: '+e.message,'error',6000); }
     };
     reload();
+  };
+})();
+</script>
+
+<script>
+// ═════════════ หนังสือติดตามนักเรียนสถานะ "แขวนลอย" (.docx ตามแบบ thai-external-letter-maker) ═════════════
+(function(){
+  var GARUDA_B64 = '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';
+  var JSZIP_URL = 'https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js';
+  var FONT = 'TH SarabunPSK', THAI_RE = /[฀-๿]/, RIGHT_COL = 5103;
+  var $e = function(s){ return window.escHTML(s==null?'':String(s)); };
+  function toThaiNum(v){ return String(v==null?'':v).replace(/[0-9]/g,function(d){ return '๐๑๒๓๔๕๖๗๘๙'.charAt(+d); }); }
+  function thaiDate(d){ return toThaiNum((d||new Date()).toLocaleDateString('th-TH',{day:'numeric',month:'long',year:'numeric'})); }
+  function xesc(t){ return String(t).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+  function loadJSZip(){
+    if(window.JSZip) return Promise.resolve(window.JSZip);
+    return new Promise(function(res,rej){
+      var sc = document.createElement('script'); sc.src = JSZIP_URL;
+      sc.onload = function(){ window.JSZip ? res(window.JSZip) : rej(new Error('โหลด JSZip ไม่สำเร็จ')); };
+      sc.onerror = function(){ rej(new Error('โหลด JSZip ไม่สำเร็จ (ตรวจสอบอินเทอร์เน็ต)')); };
+      document.head.appendChild(sc);
+    });
+  }
+
+  // ── สร้าง OOXML (พอร์ตจาก build_letter_docx.py) ──
+  function run(text, sz){
+    sz = sz || 32;
+    var rpr = '<w:rFonts w:ascii="'+FONT+'" w:eastAsia="'+FONT+'" w:hAnsi="'+FONT+'" w:cs="'+FONT+'"/><w:sz w:val="'+sz+'"/><w:szCs w:val="'+sz+'"/>'+(THAI_RE.test(text)?'<w:cs/>':'');
+    return '<w:r><w:rPr>'+rpr+'</w:rPr><w:t xml:space="preserve">'+xesc(text)+'</w:t></w:r>';
+  }
+  function tab(){ return '<w:r><w:rPr><w:rFonts w:ascii="'+FONT+'" w:hAnsi="'+FONT+'" w:cs="'+FONT+'"/><w:sz w:val="32"/><w:szCs w:val="32"/></w:rPr><w:tab/></w:r>'; }
+  function para(runs, o){
+    o = o || {}; var p = '';
+    if(o.keep) p += '<w:keepNext/>';
+    if(o.tabs) p += '<w:tabs>'+o.tabs.map(function(t){ return '<w:tab w:val="left" w:pos="'+t+'"/>'; }).join('')+'</w:tabs>';
+    p += '<w:spacing w:before="'+(o.before||0)+'" w:after="0" w:line="'+(o.line||240)+'" w:lineRule="auto"/>';
+    if(o.ind) p += '<w:ind '+Object.keys(o.ind).map(function(k){ return 'w:'+k+'="'+o.ind[k]+'"'; }).join(' ')+'/>';
+    if(o.jc) p += '<w:jc w:val="'+o.jc+'"/>';
+    return '<w:p><w:pPr>'+p+'</w:pPr>'+(runs||'')+'</w:p>';
+  }
+  function garudaAnchor(){
+    // ขนาด 2.59×3.0 ซม. ตามแบบมาตรฐาน; ภาพครอปมาจากไฟล์ตัวอย่าง (235×260 px)
+    return '<w:r><w:drawing><wp:anchor distT="0" distB="0" distL="114300" distR="114300" simplePos="0" relativeHeight="251658240" behindDoc="0" locked="0" layoutInCell="1" allowOverlap="1">'+
+      '<wp:simplePos x="0" y="0"/><wp:positionH relativeFrom="margin"><wp:posOffset>2286000</wp:posOffset></wp:positionH><wp:positionV relativeFrom="paragraph"><wp:posOffset>222885</wp:posOffset></wp:positionV>'+
+      '<wp:extent cx="975800" cy="1079500"/><wp:effectExtent l="0" t="0" r="1270" b="6350"/><wp:wrapNone/><wp:docPr id="65" name="krut" descr="ตราครุฑ"/><wp:cNvGraphicFramePr/>'+
+      '<a:graphic><a:graphicData uri="http://schemas.openxmlformats.org/drawingml/2006/picture"><pic:pic><pic:nvPicPr><pic:cNvPr id="0" name="krut.png"/><pic:cNvPicPr/></pic:nvPicPr>'+
+      '<pic:blipFill><a:blip r:embed="rIdG"/><a:stretch><a:fillRect/></a:stretch></pic:blipFill><pic:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="975800" cy="1079500"/></a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom></pic:spPr></pic:pic></a:graphicData></a:graphic></wp:anchor></w:drawing></w:r>';
+  }
+  function buildBody(s){
+    var b = [], L = 276;
+    b.push(para(garudaAnchor(), {jc:'center'}));
+    for(var i=0;i<3;i++) b.push(para('', {jc:'center'}));
+    b.push(para(run('ที่ '+s.no)+tab()+run(s.orgName), {tabs:[RIGHT_COL]}));
+    s.orgAddr.forEach(function(ln){ b.push(para(run(ln), {ind:{left:RIGHT_COL}})); });
+    b.push(para(run(s.date), {ind:{left:RIGHT_COL}}));
+    b.push(para(run('เรื่อง  '+s.subject), {line:L}));
+    b.push(para(run('เรียน  '+s.to), {line:L}));
+    if(s.ref)  b.push(para(run('อ้างถึง')+tab()+run(s.ref),  {line:L, tabs:[1701], ind:{left:1701, hanging:1701}}));
+    if(s.encl) b.push(para(run('สิ่งที่ส่งมาด้วย')+tab()+run(s.encl), {line:L, tabs:[1701], ind:{left:1701, hanging:1701}}));
+    s.body.forEach(function(t,i){ b.push(para(run(t), {jc:'thaiDistribute', line:L, before:i?120:0, ind:{firstLine:1418}})); });
+    b.push(para(run(s.closing), {jc:'thaiDistribute', line:L, before:120, ind:{firstLine:1418}}));
+    b.push(para(run('ขอแสดงความนับถือ'), {jc:'center', before:240, keep:true}));
+    b.push(para('', {keep:true})); b.push(para('', {keep:true}));
+    b.push(para(run('('+s.signerName+')'), {jc:'center', keep:true}));
+    s.signerPos.split('|').forEach(function(ln){ b.push(para(run(ln), {jc:'center', keep:true})); });
+    b.push(para('')); b.push(para(''));
+    s.contact.forEach(function(ln){ b.push(para(run(ln))); });
+    return b.join('');
+  }
+  var NS = 'xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" xmlns:wp="http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing" xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" xmlns:pic="http://schemas.openxmlformats.org/drawingml/2006/picture"';
+  async function buildDocx(spec){
+    var JSZip = await loadJSZip(), z = new JSZip();
+    var doc = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><w:document '+NS+'><w:body>'+buildBody(spec)+
+      '<w:sectPr><w:pgSz w:w="11907" w:h="16834" w:code="9"/><w:pgMar w:top="851" w:right="992" w:bottom="1134" w:left="1701" w:header="851" w:footer="624" w:gutter="0"/><w:pgNumType w:fmt="thaiNumbers"/><w:cols w:space="720"/></w:sectPr></w:body></w:document>';
+    var styles = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><w:styles xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:docDefaults><w:rPrDefault><w:rPr><w:rFonts w:ascii="'+FONT+'" w:eastAsia="'+FONT+'" w:hAnsi="'+FONT+'" w:cs="'+FONT+'"/><w:sz w:val="32"/><w:szCs w:val="32"/><w:lang w:val="th-TH" w:eastAsia="th-TH" w:bidi="th-TH"/></w:rPr></w:rPrDefault><w:pPrDefault><w:pPr><w:spacing w:after="0" w:line="240" w:lineRule="auto"/></w:pPr></w:pPrDefault></w:docDefaults><w:style w:type="paragraph" w:default="1" w:styleId="Normal"><w:name w:val="Normal"/><w:qFormat/></w:style></w:styles>';
+    var ct = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Default Extension="png" ContentType="image/png"/><Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/><Override PartName="/word/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.styles+xml"/></Types>';
+    var rels = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/></Relationships>';
+    var drels = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rIdS" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/><Relationship Id="rIdG" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="media/image1.png"/></Relationships>';
+    z.file('[Content_Types].xml', ct); z.file('_rels/.rels', rels);
+    z.file('word/document.xml', doc); z.file('word/styles.xml', styles);
+    z.file('word/_rels/document.xml.rels', drels); z.file('word/media/image1.png', GARUDA_B64, {base64:true});
+    return z.generateAsync({type:'blob', mimeType:'application/vnd.openxmlformats-officedocument.wordprocessingml.document'});
+  }
+  window.__buildSuspendLetterDocx = buildDocx;   // ใช้ทดสอบ
+
+  // ── เนื้อหา ──
+  var CONTACT_DEF = ['โรงเรียนกระดุมทองวิทยา','งานทะเบียนและเทียบโอนผลการเรียน','กลุ่มงานบริหารวิชาการ','โทร.  ๐๘๗-๓๓๗-๑๒๔๗'];
+  function gradeNum(g){ var i = window.GRADE_INFO && window.GRADE_INFO[g]; return i ? +i.num : parseInt(String(g).replace(/\D/g,''),10)||0; }
+  function bodyFor(o){
+    var school = o.schoolName, nm = o.studentName, lv = 'ชั้นมัธยมศึกษาปีที่ '+toThaiNum(o.gradeNum), d = toThaiNum(o.absentDays), w = toThaiNum(o.withinDays);
+    var p1 = 'ตามที่'+school+'ได้ตรวจสอบข้อมูลการมาเรียนของ'+nm+' '+lv+' จากครูที่ปรึกษาและครูประจำวิชา พบว่า นักเรียนรายดังกล่าวขาดเรียนติดต่อกันเกิน '+d+' วัน โดยไม่มีการแจ้งลาป่วย ลากิจ หรือแจ้งสาเหตุจำเป็นในการขาดเรียนให้ทางสถานศึกษาทราบแต่อย่างใด';
+    var lead = school+'ขอแจ้งให้ท่านทราบว่านักเรียนรายดังกล่าวได้ขาดเรียนเกินกว่าที่ระเบียบกำหนด ซึ่งอาจส่งผลให้นักเรียนไม่ผ่านเกณฑ์การประเมินผลของสถานศึกษา เพื่อเป็นการป้องกันผลกระทบที่อาจเกิดขึ้นกับนักเรียนและผลกระทบต่อการดำเนินงานของสถานศึกษา ';
+    var p2, p3;
+    if(o.type==='return'){
+      p2 = lead+'จึงขอให้ท่านให้ความร่วมมือติดตามนักเรียนในปกครองของท่านให้มาเข้าเรียนและติดตามส่งงานกับครูประจำวิชาโดยเร่งด่วน ภายใน '+w+' วันนับแต่วันที่ได้รับแจ้ง';
+    } else {
+      var act = o.lowerSec ? 'ย้ายสถานศึกษา' : 'ลาออก', form = o.lowerSec ? 'แบบคำร้องขอย้ายสถานศึกษา' : 'แบบคำร้องขอลาออกจากสถานศึกษา', doc = o.lowerSec ? 'ย้ายสถานศึกษา' : 'ลาออกจากสถานศึกษา';
+      var docs = '๑) สำเนาบัตรประชาชนของผู้ปกครอง ๒) สำเนาบัตรประชาชนของนักเรียน'+(o.lowerSec ? ' ๓) หลักฐานการรับเข้าเรียนจากสถานศึกษาแห่งใหม่ (ถ้ามี)' : '');
+      p2 = lead+'จึงขอให้ท่านพิจารณา หากนักเรียนไม่ประสงค์จะเรียนต่อ โปรดดำเนินการนำนักเรียนในปกครองของท่านมา'+(o.lowerSec?'ดำเนินการ':'')+act+'อย่างเป็นทางการ โดยสามารถติดต่อขอ'+form+'ได้ที่งานทะเบียนและเทียบโอนผลการเรียน กลุ่มงานบริหารวิชาการ ในวันและเวลาราชการ (๐๘:๓๐-๑๖:๓๐ น.) ภายใน '+w+' วันนับแต่วันที่ได้รับแจ้ง เอกสารที่ต้องนำมาประกอบการเขียนคำร้องขอ'+doc+' ประกอบด้วย '+docs;
+    }
+    p3 = 'จากรายละเอียดข้างต้น หากท่านไม่ดำเนินการประการใด '+school+' จะดำเนินการตามระเบียบที่เกี่ยวข้องต่อไป';
+    return [p1,p2,p3];
+  }
+  function subjectFor(type, lowerSec){
+    return type==='return' ? 'แจ้งติดตามนักเรียนขาดเรียนนานให้มาเข้าเรียน' : (lowerSec ? 'แจ้งติดตามให้ดำเนินการย้ายสถานศึกษาของนักเรียน' : 'แจ้งติดตามให้ดำเนินการลาออกของนักเรียน');
+  }
+  function lsGet(k, d){ try{ var v = localStorage.getItem('suspLetter.'+k); return v==null ? d : v; }catch(e){ return d; } }
+  function lsSet(k, v){ try{ localStorage.setItem('suspLetter.'+k, v); }catch(e){} }
+
+  window.openSuspendLetterDialog = function(stu, classId){
+    var rm = (window.AppState.classrooms||[]).find(function(c){ return c.id===classId; }) || {};
+    var gnum = gradeNum(rm.grade), lowerSec = gnum>=1 && gnum<=3;
+    var school = String((window.AppState.settings||{}).schoolName||'').trim() || 'โรงเรียนกระดุมทองวิทยา';
+    var name = String(stu.fullName||'').replace(/\s+/g,' ').trim();
+    var st = {type:'return', dirty:false};
+    var bd = document.createElement('div'); bd.className = 'modal-bd show';
+    var inp = 'style="width:100%;padding:.4rem .5rem;border:1px solid var(--border-strong);border-radius:8px;font-family:inherit"';
+    bd.innerHTML = '<div class="modal modal-xl"><div class="modal-head"><h3>📄 สร้างหนังสือติดตาม — '+$e(name)+'</h3><button class="modal-close" data-x>×</button></div>'+
+      '<div class="modal-body">'+
+      '<div style="display:flex;gap:1.2rem;flex-wrap:wrap;margin-bottom:.7rem">'+
+        '<label style="cursor:pointer"><input type="radio" name="slType" value="return" checked> 1) ติดตามกลับมาเข้าเรียน</label>'+
+        '<label style="cursor:pointer"><input type="radio" name="slType" value="leave"> 2) ติดตามให้มา'+(lowerSec?'ย้ายสถานศึกษา':'ลาออก')+(lowerSec?' <small class="muted">(ม.ต้น)</small>':'')+'</label>'+
+      '</div>'+
+      '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:.6rem .9rem">'+
+        '<label>ที่ (เลขหนังสือ)<input id="slNo" '+inp+' value="'+$e(lsGet('no','ศก ๕๑๐๐๘.๐๘/'))+'"></label>'+
+        '<label>วันที่<input id="slDate" '+inp+' value="'+$e(thaiDate())+'"></label>'+
+        '<label>เรียน<input id="slTo" '+inp+' value="'+$e('ผู้ปกครองของ'+name)+'"></label>'+
+        '<label>ชั้นมัธยมศึกษาปีที่ (เลข)<input id="slGrade" '+inp+' value="'+$e(gnum||'')+'"></label>'+
+        '<label>ขาดเรียนติดต่อกันเกิน (วัน)<input id="slAbs" type="number" min="1" '+inp+' value="'+$e(lsGet('abs','7'))+'"></label>'+
+        '<label>ให้ดำเนินการภายใน (วัน)<input id="slWithin" type="number" min="1" '+inp+' value="'+$e(lsGet('within','3'))+'"></label>'+
+        '<label>ผู้ลงนาม<input id="slSign" '+inp+' value="'+$e(lsGet('sign','นางสุนิสา ใจใหญ่'))+'"></label>'+
+        '<label>ตำแหน่ง<input id="slPos" '+inp+' value="'+$e(lsGet('pos','ผู้อำนวยการโรงเรียนกระดุมทองวิทยา'))+'"></label>'+
+      '</div>'+
+      '<label style="display:block;margin-top:.6rem">เรื่อง<input id="slSubj" '+inp+'></label>'+
+      '<label style="display:block;margin-top:.6rem">ผู้ติดต่อท้ายหนังสือ (บรรทัดละ 1 ข้อความ)<textarea id="slContact" rows="4" '+inp+'>'+$e(lsGet('contact',CONTACT_DEF.join('\n')))+'</textarea></label>'+
+      '<label style="display:block;margin-top:.6rem">เนื้อความ (ย่อหน้าละบรรทัด — แก้ไขได้ก่อนสร้างไฟล์)<textarea id="slBody" rows="12" '+inp+'></textarea></label>'+
+      '<div class="muted" style="font-size:.85rem;margin-top:.4rem">รูปแบบ: หนังสือภายนอก ครุฑกลางหน้า ฟอนต์ TH SarabunPSK 16 pt เลขไทย — ตรวจชื่อผู้ลงนาม/เลขที่หนังสือก่อนพิมพ์</div>'+
+      '</div>'+
+      '<div style="padding:.8rem 1.2rem;display:flex;gap:.5rem;justify-content:flex-end;border-top:1px solid var(--border)"><button class="btn" data-x>ยกเลิก</button><button class="btn btn-primary" id="slGo">⬇ สร้างไฟล์ .docx</button></div></div>';
+    document.body.appendChild(bd);
+    function q(s){ return bd.querySelector(s); }
+    function close(){ bd.classList.remove('show'); setTimeout(function(){ bd.remove(); }, 220); }
+    bd.querySelectorAll('[data-x]').forEach(function(b){ b.onclick = close; });
+    function gather(){
+      return {type:st.type, lowerSec:lowerSec, schoolName:school, studentName:name, gradeNum:q('#slGrade').value.trim(),
+        absentDays:q('#slAbs').value.trim(), withinDays:q('#slWithin').value.trim()};
+    }
+    function regen(force){
+      q('#slSubj').value = subjectFor(st.type, lowerSec);
+      if(force || !st.dirty){ q('#slBody').value = bodyFor(gather()).join('\n'); st.dirty = false; }
+    }
+    ['#slGrade','#slAbs','#slWithin'].forEach(function(id){ q(id).oninput = function(){ regen(false); }; });
+    q('#slBody').oninput = function(){ st.dirty = true; };
+    bd.querySelectorAll('input[name=slType]').forEach(function(r){ r.onchange = function(){ st.type = r.value; st.dirty = false; regen(true); }; });
+    regen(true);
+    q('#slGo').onclick = async function(){
+      try{
+        var body = q('#slBody').value.split('\n').map(function(x){ return x.trim(); }).filter(Boolean);
+        if(!body.length){ window.showToast('กรุณากรอกเนื้อความ','warning'); return; }
+        var contact = q('#slContact').value.split('\n').map(function(x){ return x.trim(); }).filter(Boolean);
+        var no = q('#slNo').value.trim();
+        var spec = {no:no||'ศก ๕๑๐๐๘.๐๘/', orgName:school, orgAddr:['๑๐๒ หมู่ ๒ ต.หนองหัวช้าง','อ.กันทรารมย์ จ.ศรีสะเกษ ๓๓๑๓๐'],
+          date:q('#slDate').value.trim(), subject:q('#slSubj').value.trim(), to:q('#slTo').value.trim(), ref:'', encl:'',
+          body:body, closing:'จึงเรียนมาเพื่อทราบและดำเนินการต่อไป', signerName:q('#slSign').value.trim(), signerPos:q('#slPos').value.trim(), contact:contact};
+        lsSet('no', no); lsSet('abs', q('#slAbs').value); lsSet('within', q('#slWithin').value); lsSet('sign', spec.signerName); lsSet('pos', spec.signerPos); lsSet('contact', contact.join('\n'));
+        window.showLoading(true,'กำลังสร้างหนังสือ...');
+        var blob = await buildDocx(spec);
+        var a = document.createElement('a'); a.href = URL.createObjectURL(blob);
+        a.download = 'หนังสือติดตาม'+(st.type==='return'?'กลับมาเรียน':(lowerSec?'ย้ายสถานศึกษา':'ลาออก'))+'_'+name.replace(/[\/\\:*?"<>|]+/g,'')+'.docx';
+        document.body.appendChild(a); a.click(); setTimeout(function(){ URL.revokeObjectURL(a.href); a.remove(); }, 1000);
+        window.showLoading(false); window.showToast('สร้างหนังสือแล้ว','success'); close();
+      }catch(e){ window.showLoading(false); console.error(e); window.showToast('สร้างหนังสือไม่สำเร็จ: '+e.message,'error',6000); }
+    };
   };
 })();
 </script>
