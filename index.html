@@ -8493,7 +8493,7 @@ table.data-tbl tr[data-st="ลาออก"] td:first-child{--stc:#ef4444}
     return [p1,p2,p3];
   }
   function subjectFor(type, lowerSec){
-    return type==='return' ? 'แจ้งติดตามนักเรียนขาดเรียนนานให้มาเข้าเรียน' : (lowerSec ? 'แจ้งติดตามให้ดำเนินการย้ายสถานศึกษาของนักเรียน' : 'แจ้งติดตามให้ดำเนินการลาออกของนักเรียน');
+    return type==='return' ? 'แจ้งติดตามนักเรียนขาดเรียนนานให้มาเข้าเรียน' : (lowerSec ? 'แจ้งติดตามให้ดำเนินการนำนักเรียนมาย้ายสถานศึกษา' : 'แจ้งติดตามให้ดำเนินการนำนักเรียนมาลาออก');
   }
   function lsGet(k, d){ try{ var v = localStorage.getItem('suspLetter.'+k); return v==null ? d : v; }catch(e){ return d; } }
   function lsSet(k, v){ try{ localStorage.setItem('suspLetter.'+k, v); }catch(e){} }
