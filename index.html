@@ -7561,23 +7561,24 @@ table.data-tbl tr[data-st="ลาออก"] td:first-child{--stc:#ef4444}
     var widths = [8.9, 13.5, 30].concat([5.8,5.8,5.8,5.8,5.8,5.8,5.8,5.8]).concat([14.4]);
     widths.forEach(function(w,i){ ws.getColumn(i+1).width = w; });
     var f18 = {name:FONT, size:18}, f18b = {name:FONT, size:18, bold:true}, f16 = {name:FONT, size:16};
-    var lines = [titleText(rm, allRooms), schoolLine(), advisorText(rm)];
+    var lines = [titleText(rm, allRooms), schoolLine(), advisorText(rm), 'ข้อมูล ณ วันที่ '+thaiToday()];
     lines.forEach(function(t,i){
       var r = i+1; ws.mergeCells(r,1,r,12);
       var c = ws.getCell(r,1); c.value = t; c.font = f18b; c.alignment = {horizontal:'center', vertical:'middle'};
       ws.getRow(r).height = 23.4;
+      if(r===4) c.font = {name:FONT, size:16};
     });
-    for(var c3=1;c3<=12;c3++) ws.getCell(3,c3).border = {bottom:THIN};
+    for(var c3=1;c3<=12;c3++) ws.getCell(4,c3).border = {bottom:THIN};
     var head = {1:'เลขที่', 2:'เลขประจำตัว', 3:'ชื่อ - สกุล', 12:'หมายเหตุ'};
     for(var c=1;c<=12;c++){
-      var hc = ws.getCell(4,c); hc.value = head[c] || null; hc.font = f18b; hc.border = BORDER;
+      var hc = ws.getCell(5,c); hc.value = head[c] || null; hc.font = f18b; hc.border = BORDER;
       hc.alignment = {horizontal:'center', vertical:'middle'};
     }
-    ws.getRow(4).height = 23.4;
-    var last = Math.max(37, 4+students.length), numNo = 0;
+    ws.getRow(5).height = 23.4;
+    var last = Math.max(38, 5+students.length), numNo = 0;
     var ABN_FILL = {'แขวนลอย':'FFFEF3C7','ย้าย':'FFDBEAFE','ลาออก':'FFFEE2E2'};
-    for(var r=5;r<=last;r++){
-      var s = students[r-5];
+    for(var r=6;r<=last;r++){
+      var s = students[r-6];
       ws.getRow(r).height = 23.4;
       for(var cc=1;cc<=12;cc++){
         var cell = ws.getCell(r,cc); cell.border = BORDER;
@@ -7610,15 +7611,15 @@ table.data-tbl tr[data-st="ลาออก"] td:first-child{--stc:#ef4444}
   function printHtml(rooms, studentsMap, allRooms){
     var base = function(f){ return new URL('fonts/'+f, document.baseURI).href; };
     // A4 แนวตั้ง ขอบ 12mm/10mm → พื้นที่ใช้ได้สูง 273mm ; ส่วนหัว 3 บรรทัด+หัวตาราง ≈ 36mm ; แถวละ 8.2mm
-    var ROW_MM = 8.2, PAGE_MM = 266, AVAIL_MM = PAGE_MM - 36, MIN_ROWS = Math.floor(AVAIL_MM/ROW_MM);
+    var ROW_MM = 8.2, PAGE_MM = 252, AVAIL_MM = PAGE_MM - 44, MIN_ROWS = Math.floor(AVAIL_MM/ROW_MM);
     var css = "@font-face{font-family:'TH SarabunPSK';src:url('"+base('THSarabun.ttf')+"');font-weight:400}"+
       "@font-face{font-family:'TH SarabunPSK';src:url('"+base('THSarabun_Bold.ttf')+"');font-weight:700}"+
       "@page{size:A4 portrait;margin:12mm 10mm}*{box-sizing:border-box}body{font-family:'TH SarabunPSK',sans-serif;font-size:16pt;margin:0}"+
-      ".pg{height:"+PAGE_MM+"mm;overflow:hidden;page-break-inside:avoid;break-inside:avoid}.pg+.pg{page-break-before:always;break-before:page}html,body{margin:0;padding:0}"+
+      ".pg{page-break-inside:avoid;break-inside:avoid}.pg.brk{page-break-after:always;break-after:page}html,body{margin:0;padding:0}"+
       "h1,h2,h3{font-size:16pt;text-align:center;margin:0;line-height:1.3;font-weight:700}"+
-      "table{width:100%;border-collapse:collapse;margin-top:2mm;table-layout:fixed}td,th{border:1px solid #000;padding:0 2mm;overflow:hidden;white-space:nowrap}"+
+      "table{width:100%;border-collapse:collapse;margin-top:2mm;table-layout:fixed}td,th{border:1px solid #000;padding:0 2mm;overflow:hidden;white-space:nowrap;line-height:1.05}"+
       "th{font-weight:700}td.c{text-align:center}.tb{position:fixed;top:0;right:0;background:#fff;padding:6px;z-index:9}@media print{.tb{display:none}}";
-    var body = rooms.map(function(rm){
+    var body = rooms.map(function(rm, ri){
       var st = studentsMap[rm.id]||[];
       var n = Math.max(MIN_ROWS, st.length);
       // ชื่อเยอะเกิน 1 หน้า → ลดขนาดแถว/ตัวอักษรลงให้พอดี 1 หน้า (ไม่ต่ำกว่า 40%)
@@ -7630,8 +7631,9 @@ table.data-tbl tr[data-st="ลาออก"] td:first-child{--stc:#ef4444}
         rows += '<tr style="height:'+rowH+(abn?';background:#e5e7eb;font-style:italic':'')+'"><td class="c" style="width:12mm">'+(s&&!(Number(s.order)>=1000)?(++numNo):'')+'</td><td class="c" style="width:26mm">'+(s?$esc(s.studentId||''):'')+'</td><td>'+(s?$esc(String(s.fullName||'').trim()):'')+'</td>'+
           '<td style="width:52mm"></td><td class="c" style="width:26mm">'+(s?$esc(remarkOf(s)):'')+'</td></tr>';
       }
-      return '<div class="pg"><h1>'+$esc(titleText(rm, allRooms))+'</h1><h2>'+$esc(schoolLine())+'</h2>'+
-        '<h3>'+$esc(advisorText(rm))+'</h3><table style="font-size:'+fs+'"><thead><tr style="height:'+rowH+'"><th style="width:12mm">เลขที่</th><th style="width:26mm">เลขประจำตัว</th><th>ชื่อ - สกุล</th><th style="width:52mm"></th><th style="width:26mm">หมายเหตุ</th></tr></thead><tbody>'+rows+'</tbody></table></div>';
+      // ขึ้นหน้าใหม่เฉพาะ "หลังห้องที่ไม่ใช่ห้องสุดท้าย" → ไม่มีหน้าว่างท้ายเอกสาร ; เนื้อหาเตี้ยกว่าหน้ากระดาษเผื่อความคลาดเคลื่อนของเครื่องพิมพ์
+      return '<div class="pg'+(ri<rooms.length-1?' brk':'')+'"><h1>'+$esc(titleText(rm, allRooms))+'</h1><h2>'+$esc(schoolLine())+'</h2>'+
+        '<h3>'+$esc(advisorText(rm))+'</h3><h3 style="font-weight:400">ข้อมูล ณ วันที่ '+$esc(thaiToday())+'</h3><table style="font-size:'+fs+'"><thead><tr style="height:'+rowH+'"><th style="width:12mm">เลขที่</th><th style="width:26mm">เลขประจำตัว</th><th>ชื่อ - สกุล</th><th style="width:52mm"></th><th style="width:26mm">หมายเหตุ</th></tr></thead><tbody>'+rows+'</tbody></table></div>';
     }).join('');
     var w = window.open('', '_blank');
     if(!w){ window.showToast('เบราว์เซอร์บล็อกหน้าต่างใหม่ — กรุณาอนุญาต pop-up','warning'); return; }
@@ -7672,7 +7674,7 @@ table.data-tbl tr[data-st="ลาออก"] td:first-child{--stc:#ef4444}
         window.showLoading(true,'กำลังสร้างไฟล์ Excel...');
         var wb = await buildListWorkbook(p.sel, p.map, rooms);
         var buf = await wb.xlsx.writeBuffer();
-        download(buf, 'ใบรายชื่อนักเรียน_ปี'+m.q('#lxYear').value+'.xlsx');
+        download(buf, 'ใบรายชื่อนักเรียน_ปี'+m.q('#lxYear').value+'_ข้อมูล ณ วันที่ '+thaiToday().replace(/ /g,'-')+'.xlsx');
         window.showLoading(false);
         window.showToast('ส่งออกใบรายชื่อ '+p.sel.length+' ห้องแล้ว','success');
       }catch(e){ window.showLoading(false); console.error(e); window.showToast('ส่งออกไม่สำเร็จ: '+e.message,'error',6000); }
