@@ -1297,6 +1297,7 @@ window.deleteStudent = async function(classId, studentDocId){
       {k:'nickname',label:'ชื่อเล่น'},
       {k:'gender',label:'เพศ'},
       {k:'phone',label:'โทร'},
+      {k:'status',label:'สถานะ'},
       {k:'__action',label:''}
     ];
     cols.forEach(function(c){
@@ -1304,7 +1305,7 @@ window.deleteStudent = async function(classId, studentDocId){
       else if(c.k==='__photo') html += '<th style="text-align:center">'+c.label+'</th>';
       else html += '<th class="sortable" data-sort="'+c.k+'">'+c.label+'</th>';
     });
-    html += '</tr></thead><tbody id="stuTbody"><tr><td colspan="8" class="text-center muted" style="padding:2rem">กำลังโหลด...</td></tr></tbody>';
+    html += '</tr></thead><tbody id="stuTbody"><tr><td colspan="9" class="text-center muted" style="padding:2rem">กำลังโหลด...</td></tr></tbody>';
     html += '</table></div>';
     html += '<div class="tbl-foot"><div id="stuStat" class="muted">—</div><div class="pager" id="stuPager"></div></div>';
     html += '</div>';
@@ -2500,7 +2501,9 @@ window.deleteStudent = async function(classId, studentDocId){
           'ชื่อ-สกุล': s.fullName||'',
           'ชื่อเล่น': s.nickname||'',
           'เพศ': s.gender||'',
-          'สถานะ': s.status||'ปกติ'
+          'สถานะ': s.status||'ปกติ',
+          'วันที่ย้ายออก/ลาออก': window.stuDateTh(s.statusDate),
+          'ย้ายเข้าระหว่างเทอม': s.transferIn ? ('ย้ายเข้า '+window.stuDateTh(s.transferInDate)).trim() : ''
         };
         // ผสานกับ raw data ของเดิม
         if(s.raw){ Object.assign(base, s.raw); }
@@ -2653,6 +2656,11 @@ window.deleteStudent = async function(classId, studentDocId){
       '<button class="btn btn-primary" id="stCutStudents">✂️ ตัดนักเรียน + เลื่อนเลขที่</button>'+
       '</div>'+
 
+      '<div class="set-section"><h4>🔁 ส่งออกนักเรียนย้ายเข้า / ย้ายออก / ลาออก</h4>'+
+      '<p class="muted">สรุปรายชื่อพร้อมวันที่ แยกตามปีการศึกษา ส่งออกเป็นไฟล์ Excel</p>'+
+      '<button class="btn btn-primary" id="stTransferReport">📤 ส่งออกรายงานย้ายเข้า-ออก</button>'+
+      '</div>'+
+
       '<div class="set-section"><h4>📥 ดาวน์โหลดไฟล์ Template สำหรับ Import</h4>'+
       '<p class="muted">ดาวน์โหลดไฟล์ Excel เปล่าที่มีหัวคอลัมน์ครบตามรูปแบบ A (ใบมอบตัว) — กรอกข้อมูลนักเรียนลงในไฟล์ แล้วนำไป Import ผ่านเมนู "นำเข้ารายชื่อ" ได้ทันที (มีตัวอย่าง 1 แถวให้ดูเป็นแนวทาง)</p>'+
       '<button class="btn" id="stImportTpl">📥 ดาวน์โหลด Template Import (.xlsx)</button>'+
@@ -2712,8 +2720,8 @@ window.deleteStudent = async function(classId, studentDocId){
     (function(){
       var body = bd.querySelector('.modal-body');
       var secs = Array.prototype.slice.call(body.children).filter(function(e){ return e.classList.contains('set-section'); });
-      var groups = [['⚙️ ทั่วไป',[0,1]],['👥 นักเรียน',[2,3,7,8,9]],['📄 เอกสาร / ฟอร์ม',[4,5,6]],['💾 ระบบ',[10,11]]];
-      if(secs.length!==12) return; // โครงสร้างเปลี่ยน → ไม่จัดแท็บ (แสดงแบบเดิม)
+      var groups = [['⚙️ ทั่วไป',[0,1]],['👥 นักเรียน',[2,3,4,8,9,10]],['📄 เอกสาร / ฟอร์ม',[5,6,7]],['💾 ระบบ',[11,12]]];
+      if(secs.length!==13) return; // โครงสร้างเปลี่ยน → ไม่จัดแท็บ (แสดงแบบเดิม)
       var bar = document.createElement('div'); bar.className = 'tk-tabs';
       var panels = groups.map(function(g, gi){
         var pn = document.createElement('div'); pn.className = 'tk-tabpanel'; pn.style.display = gi===0 ? '' : 'none';
@@ -2729,6 +2737,7 @@ window.deleteStudent = async function(classId, studentDocId){
       panels.forEach(function(pn){ body.appendChild(pn); });
     })();
     bd.querySelector('#stCutStudents').onclick = function(){ window.openCutStudentsDialog(); };
+    bd.querySelector('#stTransferReport').onclick = function(){ window.openTransferReportDialog(); };
     bd.querySelector('#stClose').onclick = close;
     bd.querySelector('#stCancel').onclick = close;
     bd.querySelector('#stSave').onclick = async function(){
@@ -3773,6 +3782,8 @@ window.deleteStudent = async function(classId, studentDocId){
             'ห้อง': label,
             'ลำดับ': (s.order>0&&s.order<1000)?s.order:'',
             'สถานะ': s.status||'ปกติ',
+            'วันที่ย้ายออก/ลาออก': window.stuDateTh(s.statusDate),
+            'ย้ายเข้าระหว่างเทอม': s.transferIn ? ('ย้ายเข้า '+window.stuDateTh(s.transferInDate)).trim() : '',
             'เลขประจำตัวนักเรียน': s.studentId||'',
             'ชื่อ-สกุล': s.fullName||'',
             'ชื่อเล่น': s.nickname||'',
@@ -4198,7 +4209,7 @@ window.deleteStudent = async function(classId, studentDocId){
     }catch(e){
       window.showLoading(false);
       var tb = document.getElementById('stuTbody');
-      if(tb) tb.innerHTML = '<tr><td colspan="7" class="text-center" style="color:var(--danger);padding:2rem">โหลดผิดพลาด: '+window.escHTML(e.message)+'</td></tr>';
+      if(tb) tb.innerHTML = '<tr><td colspan="9" class="text-center" style="color:var(--danger);padding:2rem">โหลดผิดพลาด: '+window.escHTML(e.message)+'</td></tr>';
     }
     var s = document.getElementById('stuSearch');
     if(s){ s.oninput = function(){ TBL_STATE.q = s.value.trim(); TBL_STATE.page=1; applyTblFilter(); }; }
@@ -4250,7 +4261,7 @@ window.deleteStudent = async function(classId, studentDocId){
     var slice = TBL_STATE.filtered.slice(start, start+ps);
 
     if(!slice.length){
-      tb.innerHTML = '<tr><td colspan="8" class="text-center muted" style="padding:2rem">ไม่พบนักเรียน</td></tr>';
+      tb.innerHTML = '<tr><td colspan="9" class="text-center muted" style="padding:2rem">ไม่พบนักเรียน</td></tr>';
     } else {
       tb.innerHTML = slice.map(function(s){
         var _g = (function(g,name){ if(g && g!=='ไม่ระบุ' && g!=='') return g; var n=String(name||'').trim(); if(/^(เด็กชาย|ด.ช.|นาย)/.test(n)) return 'ชาย'; if(/^(เด็กหญิง|ด.ญ.|นางสาว|นาง)/.test(n)) return 'หญิง'; return g||''; })(s.gender,s.fullName); var gc = _g==='ชาย'?'gender-m':(_g==='หญิง'?'gender-f':'');
@@ -4303,6 +4314,7 @@ window.deleteStudent = async function(classId, studentDocId){
               ' data-sname="'+window.escHTML(s.fullName||'')+'">📞</button>';
           })(s)+
           '</td>'+
+          '<td style="white-space:nowrap">'+window.stuStatusCell(s)+'</td>'+
           '<td><button class="btn btn-sm btn-primary" data-act="openStudent" data-docid="'+window.escHTML(s.id||'')+'">👁 ดู</button></td>'+
           '</tr>';
       }).join('');
@@ -4372,6 +4384,11 @@ window.deleteStudent = async function(classId, studentDocId){
             field('ลำดับในห้อง', window.stuOrderText(s), null)+
             '<div class="dfield"><div class="lbl">สถานะนักเรียน</div><select class="val" data-edit="status">'+
               ['ปกติ','แขวนลอย','ย้าย','ลาออก'].map(function(o){ return '<option value="'+o+'"'+((s.status||'ปกติ')===o?' selected':'')+'>'+o+'</option>'; }).join('')+'</select></div>'+
+            '<div class="dfield" id="dtStDateBox" style="display:'+((s.status==='ย้าย'||s.status==='ลาออก')?'':'none')+'"><div class="lbl" id="dtStDateLbl">'+(s.status==='ลาออก'?'วันที่ลาออก':'วันที่ย้ายออก')+'</div>'+
+              '<input type="date" class="val" id="dtStDate" value="'+window.escHTML(s.statusDate||'')+'"></div>'+
+            '<div class="dfield" id="dtTinBox" style="display:'+((!s.status||s.status==='ปกติ')?'':'none')+'"><div class="lbl">ย้ายเข้าระหว่างเทอม</div>'+
+              '<label style="display:flex;align-items:center;gap:.4rem;cursor:pointer"><input type="checkbox" id="dtTin" style="width:auto"'+(s.transferIn?' checked':'')+'> ย้ายเข้าระหว่างเทอม</label>'+
+              '<input type="date" class="val" id="dtTinDate" style="margin-top:.3rem;display:'+(s.transferIn?'':'none')+'" value="'+window.escHTML(s.transferInDate||'')+'"></div>'+
           '</div>'+
           '<div class="hint" style="margin-top:.3rem">⚠️ การแก้ไขเลขประจำตัวจะย้ายรหัสเอกสารในฐานข้อมูลให้อัตโนมัติ — ห้ามซ้ำกับนักเรียนคนอื่นในห้อง</div>'+
         '</div>'+
@@ -4573,6 +4590,17 @@ window.deleteStudent = async function(classId, studentDocId){
     };
 
     function close(){ bd.classList.remove('show'); setTimeout(function(){bd.remove()},220); }
+    (function(){
+      var sel = bd.querySelector('select[data-edit="status"]'), tin = bd.querySelector('#dtTin');
+      function sync(){
+        var v = sel.value;
+        bd.querySelector('#dtStDateBox').style.display = (v==='ย้าย'||v==='ลาออก') ? '' : 'none';
+        bd.querySelector('#dtStDateLbl').textContent = v==='ลาออก' ? 'วันที่ลาออก' : 'วันที่ย้ายออก';
+        bd.querySelector('#dtTinBox').style.display = v==='ปกติ' ? '' : 'none';
+        bd.querySelector('#dtTinDate').style.display = tin.checked ? '' : 'none';
+      }
+      sel.onchange = sync; tin.onchange = sync;
+    })();
     bd.querySelector('#dtCl').onclick = close;
     bd.querySelector('#dtCa').onclick = close;
 
@@ -4607,6 +4635,14 @@ window.deleteStudent = async function(classId, studentDocId){
         }
         // ให้ค่า studentId กับ raw['เลขประจำตัวนักเรียน'] สอดคล้องกัน
         rawPatch['เลขประจำตัวนักเรียน'] = newSid;
+      }
+      // ── วันที่ย้าย/ลาออก + ย้ายเข้าระหว่างเทอม ──
+      var stSel = patch.status || s.status || 'ปกติ';
+      patch.statusDate = (stSel==='ย้าย'||stSel==='ลาออก') ? (bd.querySelector('#dtStDate').value||'') : '';
+      if(stSel==='ปกติ'){
+        var tinOn = bd.querySelector('#dtTin').checked;
+        patch.transferIn = !!tinOn;
+        patch.transferInDate = tinOn ? (bd.querySelector('#dtTinDate').value||'') : '';
       }
       patch.raw = rawPatch;
       patch.studentId = newSid;
@@ -7433,6 +7469,27 @@ table.data-tbl tr[data-st="ลาออก"] td:first-child{--stc:#ef4444}
     var c = s && ST_COLORS[s.status]; if(!c) return '';
     return ' <span style="display:inline-block;font-size:.78em;line-height:1.35;padding:0 .5em;border-radius:999px;font-weight:600;font-style:normal;text-decoration:none;color:'+c[0]+';background:'+c[1]+';border:1px solid '+c[2]+'">'+window.escHTML(s.status)+'</span>';
   };
+  var TH_M = ['ม.ค.','ก.พ.','มี.ค.','เม.ย.','พ.ค.','มิ.ย.','ก.ค.','ส.ค.','ก.ย.','ต.ค.','พ.ย.','ธ.ค.'];
+  window.stuDateTh = function(iso, short){
+    var m = String(iso||'').match(/^(\d{4})-(\d{2})-(\d{2})/); if(!m) return '';
+    var y = +m[1]+543; return (+m[3])+' '+TH_M[+m[2]-1]+' '+(short ? String(y).slice(2) : y);
+  };
+  // เซลล์ "สถานะ" ในตาราง: ป้ายสถานะ + วันที่ (ย้าย/ลาออก) หรือ "ย้ายเข้า ..." สำหรับคนปกติที่ย้ายเข้าระหว่างเทอม
+  window.stuStatusCell = function(s){
+    var h = '', abn = window.stuIsAbnormal(s);
+    if(abn){
+      h += window.stuStatusTag(s).trim();
+      if((s.status==='ย้าย'||s.status==='ลาออก')){
+        h += '<div style="font-size:.8rem;color:#475569;margin-top:2px">'+(s.statusDate ? 'เมื่อ '+window.escHTML(window.stuDateTh(s.statusDate)) : '<span style="color:#94a3b8">ไม่ระบุวันที่</span>')+'</div>';
+      }
+    } else {
+      h += '<span style="color:#15803d">ปกติ</span>';
+    }
+    if(s.transferIn){
+      h += '<div style="font-size:.8rem;color:#0e7490;margin-top:2px">↪ ย้ายเข้า'+(s.transferInDate ? ' '+window.escHTML(window.stuDateTh(s.transferInDate)) : '')+'</div>';
+    }
+    return h;
+  };
   window.stuIsAbnormal = function(s){ return !!(s && ST_COLORS[s.status]); };
   window.stuOrderText = function(s){ var o = Number(s && s.order); return (o>0 && o<1000) ? String(o) : '—'; };
   var FONT = 'TH SarabunPSK';
@@ -7551,7 +7608,12 @@ table.data-tbl tr[data-st="ลาออก"] td:first-child{--stc:#ef4444}
     var n = String((window.AppState.settings||{}).schoolName||'').trim() || 'โรงเรียนกระดุมทองวิทยา';
     return n+' สังกัดองค์การบริหารส่วนจังหวัดศรีสะเกษ';
   }
-  function remarkOf(s){ var st = statusOf(s); return st==='ปกติ' ? '' : st; }
+  function remarkOf(s){
+    var st = statusOf(s), parts = [];
+    if(st!=='ปกติ'){ var d = (st==='ย้าย'||st==='ลาออก') ? window.stuDateTh(s.statusDate, true) : ''; parts.push(st+(d?' '+d:'')); }
+    else if(s.transferIn){ var di = window.stuDateTh(s.transferInDate, true); parts.push('ย้ายเข้า'+(di?' '+di:'')); }
+    return parts.join(' ');
+  }
 
   function addClassSheet(wb, rm, students, allRooms){
     var ws = wb.addWorksheet(sheetTitle(rm, allRooms), {
@@ -8194,6 +8256,87 @@ table.data-tbl tr[data-st="ลาออก"] td:first-child{--stc:#ef4444}
         renderResult();
       }catch(e){ window.showLoading(false); console.error(e); window.showToast('บันทึกไม่สำเร็จ: '+e.message,'error',7000); }
     };
+  };
+  // ═════════════════ 5) รายงานนักเรียนย้ายเข้า / ย้ายออก / ลาออก ═════════════════
+  var TR_ORDER = ['ย้ายเข้า','ย้ายออก','ลาออก'];
+  function transferRows(rooms, map, types){
+    var rows = [];
+    rooms.forEach(function(rm){
+      (map[rm.id]||[]).forEach(function(s){
+        function add(type, date){ if(types.indexOf(type)>=0) rows.push({type:type, date:date||'', rm:rm, s:s}); }
+        if(s.transferIn) add('ย้ายเข้า', s.transferInDate);
+        if(s.status==='ย้าย') add('ย้ายออก', s.statusDate);
+        if(s.status==='ลาออก') add('ลาออก', s.statusDate);
+      });
+    });
+    rows.sort(function(a,b){
+      return (TR_ORDER.indexOf(a.type)-TR_ORDER.indexOf(b.type)) || String(a.date||'9999').localeCompare(String(b.date||'9999')) ||
+        (gradeNum(a.rm.grade)-gradeNum(b.rm.grade)) || (roomNum(a.rm.room)-roomNum(b.rm.room));
+    });
+    return rows;
+  }
+
+  window.openTransferReportDialog = function(){
+    var rooms = [], rows = [];
+    var m = openModal('🔁 ส่งออกนักเรียนย้ายเข้า / ย้ายออก / ลาออก',
+      '<div class="tk-row">'+yearSelect('trYear')+'</div>'+
+      '<div class="tk-row"><b>ประเภท:</b>'+TR_ORDER.map(function(t){ return '<label><input type="checkbox" data-tt="'+t+'" checked> '+t+'</label>'; }).join('')+'</div>'+
+      '<div id="trOut"><div class="muted">กำลังโหลด...</div></div>',
+      '<button class="btn btn-success" id="trGo">📤 ส่งออก Excel</button><button class="btn" id="trCa">ปิด</button>');
+    m.q('#trCa').onclick = m.close;
+    var cache = {}, cacheYear = null;
+    function types(){ return m.qa('[data-tt]').filter(function(c){ return c.checked; }).map(function(c){ return c.dataset.tt; }); }
+    function render(){
+      rows = transferRows(rooms, cache, types());
+      if(!rows.length){ m.q('#trOut').innerHTML = '<div class="tk-warn"><b>ไม่พบนักเรียนตามเงื่อนไข</b> (ตั้งสถานะ/ย้ายเข้าในหน้ารายละเอียดนักเรียนก่อน)</div>'; return; }
+      var cnt = {}; rows.forEach(function(r){ cnt[r.type] = (cnt[r.type]||0)+1; });
+      m.q('#trOut').innerHTML = '<div class="tk-ok"><b>พบ '+rows.length+' รายการ</b> — '+TR_ORDER.filter(function(t){ return cnt[t]; }).map(function(t){ return t+' '+cnt[t]; }).join(' · ')+'</div>'+
+        '<div class="tk-box"><table class="tk-tbl" style="margin:0"><thead><tr><th>ประเภท</th><th>ห้อง</th><th>เลขประจำตัว</th><th>ชื่อ-สกุล</th><th>วันที่</th></tr></thead><tbody>'+
+        rows.map(function(r){ return '<tr><td>'+$esc(r.type)+'</td><td>'+$esc(roomLabel(r.rm))+'</td><td>'+$esc(r.s.studentId||'')+'</td><td style="text-align:left">'+$esc(String(r.s.fullName||'').trim())+'</td><td>'+(r.date?$esc(window.stuDateTh(r.date)):'<span class="muted">ไม่ระบุ</span>')+'</td></tr>'; }).join('')+
+        '</tbody></table></div>';
+    }
+    async function reload(){
+      var y = m.q('#trYear').value; rooms = roomsOfYear(y);
+      m.q('#trOut').innerHTML = '<div class="muted">กำลังโหลด...</div>';
+      try{ cache = await loadStudents(rooms); cacheYear = y; }catch(e){ m.q('#trOut').innerHTML = '<div class="tk-bad">โหลดไม่สำเร็จ: '+$esc(e.message)+'</div>'; return; }
+      render();
+    }
+    m.q('#trYear').onchange = reload; m.qa('[data-tt]').forEach(function(c){ c.onchange = render; });
+    m.q('#trGo').onclick = async function(){
+      if(!rows.length){ window.showToast('ไม่มีรายการให้ส่งออก','warning'); return; }
+      try{
+        window.showLoading(true,'กำลังสร้างไฟล์ Excel...');
+        var EJ = await loadExcelJS(), wb = new EJ.Workbook();
+        var ws = wb.addWorksheet('ย้ายเข้า-ออก-ลาออก', {pageSetup:{paperSize:9, orientation:'portrait', fitToPage:true, fitToWidth:1, fitToHeight:0}});
+        var W = [7,12,12,13,32,8,18,18]; W.forEach(function(w,i){ ws.getColumn(i+1).width = w; });
+        var y = m.q('#trYear').value;
+        [['รายงานนักเรียนย้ายเข้า / ย้ายออก / ลาออก ปีการศึกษา '+y, 18, true], [schoolLine(), 16, true], ['ข้อมูล ณ วันที่ '+thaiToday(), 16, false]].forEach(function(l,i){
+          ws.mergeCells(i+1,1,i+1,8); var c = ws.getCell(i+1,1); c.value = l[0]; c.font = {name:FONT, size:l[1], bold:l[2]}; c.alignment = {horizontal:'center'};
+        });
+        var H = ['ที่','ประเภท','ชั้น/ห้อง','เลขประจำตัว','ชื่อ-สกุล','เพศ','วันที่','หมายเหตุ'];
+        H.forEach(function(h,i){ var c = ws.getCell(5,i+1); c.value = h; c.font = {name:FONT, size:16, bold:true}; c.border = BORDER; c.alignment = {horizontal:'center'}; c.fill = {type:'pattern', pattern:'solid', fgColor:{argb:'FFE0E7FF'}}; });
+        var FILL = {'ย้ายเข้า':'FFCFFAFE','ย้ายออก':'FFDBEAFE','ลาออก':'FFFEE2E2'};
+        rows.forEach(function(r,i){
+          var vals = [i+1, r.type, roomLabel(r.rm), String(r.s.studentId||''), String(r.s.fullName||'').trim(), genderOf(r.s), r.date ? window.stuDateTh(r.date) : 'ไม่ระบุ', ''];
+          vals.forEach(function(v,ci){
+            var c = ws.getCell(6+i, ci+1); c.value = v; c.border = BORDER; c.font = {name:FONT, size:16};
+            c.alignment = {horizontal: ci===4 ? 'left' : 'center'}; c.fill = {type:'pattern', pattern:'solid', fgColor:{argb:FILL[r.type]}};
+            if(ci===3) c.numFmt = '@';
+          });
+        });
+        // ชีตสรุปตามห้อง
+        var ws2 = wb.addWorksheet('สรุปตามห้อง'); [16,10,10,10].forEach(function(w,i){ ws2.getColumn(i+1).width = w; });
+        ['ชั้น/ห้อง'].concat(TR_ORDER).forEach(function(h,i){ var c = ws2.getCell(1,i+1); c.value = h; c.font = {name:FONT, size:16, bold:true}; c.border = BORDER; c.alignment = {horizontal:'center'}; });
+        rooms.forEach(function(rm,ri){
+          var vals = [roomLabel(rm)].concat(TR_ORDER.map(function(t){ return rows.filter(function(r){ return r.rm.id===rm.id && r.type===t; }).length; }));
+          vals.forEach(function(v,ci){ var c = ws2.getCell(2+ri, ci+1); c.value = v; c.font = {name:FONT, size:16}; c.border = BORDER; c.alignment = {horizontal: ci?'center':'left'}; });
+        });
+        var buf = await wb.xlsx.writeBuffer();
+        download(buf, 'รายงานย้ายเข้า-ออก-ลาออก_ปี'+y+'_ข้อมูล ณ วันที่ '+thaiToday().replace(/ /g,'-')+'.xlsx');
+        window.showLoading(false); window.showToast('ส่งออกรายงานแล้ว','success');
+      }catch(e){ window.showLoading(false); console.error(e); window.showToast('ส่งออกไม่สำเร็จ: '+e.message,'error',6000); }
+    };
+    reload();
   };
 })();
 </script>
