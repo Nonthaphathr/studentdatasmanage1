@@ -2688,6 +2688,11 @@ window.deleteStudent = async function(classId, studentDocId){
       '<button class="btn" id="stVillageUp">📤 อัปโหลดไฟล์ที่กรอกแล้ว</button>'+
       '</div></div>'+
 
+      '<div class="set-section"><h4>📝 แก้ไขข้อมูลเฉพาะจุดจากไฟล์ (วันเกิด / เลขบัตร)</h4>'+
+      '<p class="muted">อัปโหลดไฟล์ที่ระบุเลขประจำตัว + ช่องที่ต้องแก้ ระบบจะแก้เฉพาะช่องนั้นของนักเรียนคนนั้น ไม่เปลี่ยนเลขที่/รูป/สถานะ</p>'+
+      '<button class="btn" id="stCorrUp">📤 อัปโหลดไฟล์แก้ไขข้อมูล</button>'+
+      '</div>'+
+
       '<div class="set-section"><h4>💡 รายการ Suggest โรงเรียนเดิม &amp; หมู่บ้าน</h4>'+
       '<p class="muted">วางรายชื่อทีละหลายรายการได้ (คั่นด้วย Enter หรือ Comma) — ระบบจะนำไปแสดงเป็น Suggest ในช่องกรอกข้อมูลของนักเรียน</p>'+
       '<div class="form-row"><label>📋 รายการโรงเรียนเดิม <span id="stSchoolSugCount" class="suggest-count-badge">0 รายการ</span></label>'+
@@ -2765,6 +2770,7 @@ window.deleteStudent = async function(classId, studentDocId){
     bd.querySelector('#stFixDates').onclick = function(){ close(); window.fixDateCorruptedHouseNos(); };
     bd.querySelector('#stVillageDl').onclick = function(){ close(); window.exportVillageTemplate(); };
     bd.querySelector('#stVillageUp').onclick = function(){ close(); window.importVillageData(); };
+    bd.querySelector('#stCorrUp').onclick = function(){ close(); window.importCorrectionData(); };
     bd.querySelector('#stBackup').onclick = function(){ close(); window.backupAll(); };
     bd.querySelector('#stRestore').onclick = function(){ close(); window.restoreAll(); };
     bd.querySelector('#stExportAllXlsx').onclick = function(){ close(); window.exportAllStudentsXlsx(); };
@@ -3096,6 +3102,117 @@ window.deleteStudent = async function(classId, studentDocId){
       }finally{
         input.remove();
       }
+    };
+    input.click();
+  };
+
+  // ═══════════════ แก้ไขข้อมูลเฉพาะจุดจากไฟล์ (วันเกิด / เลขบัตรประชาชน) ═══════════════
+  // จับคู่ด้วยเลขประจำตัวนักเรียน "เฉพาะห้องของปีการศึกษาที่ระบุ" แล้วแก้เฉพาะฟิลด์ใน raw ที่กรอกในไฟล์
+  // ไม่แตะ order(เลขที่) / รูป / สถานะ / docId / นักเรียนคนอื่น  (ช่องว่าง = ไม่แก้)
+  var CORR_MONTHS = ['มกราคม','กุมภาพันธ์','มีนาคม','เมษายน','พฤษภาคม','มิถุนายน','กรกฎาคม','สิงหาคม','กันยายน','ตุลาคม','พฤศจิกายน','ธันวาคม'];
+  function corrNidOk(n){
+    if(!/^\d{13}$/.test(n)) return false;
+    var s=0; for(var i=0;i<12;i++) s += parseInt(n.charAt(i),10)*(13-i);
+    return ((11 - s%11)%10) === parseInt(n.charAt(12),10);
+  }
+  // pure: rows(จากไฟล์) + index(sid → {classId,docId,fullName,raw}) → {updates, errors, unmatched}
+  window.planCorrections = function(rows, index, defaultYear){
+    var updates=[], errors=[], unmatched=[];
+    var F = {d:'วันเกิด(วัน)', m:'วันเกิด(เดือน)', y:'วันเกิด(ปีพ.ศ.)', n:'เลขบัตรนักเรียน'};
+    rows.forEach(function(r, i){
+      var sid = String(r['เลขประจำตัวนักเรียน']||'').trim();
+      if(!sid) return;
+      var year = String(r['ปีการศึกษา']||'').trim() || String(defaultYear||'');
+      var hit = index[year+'|'+sid];
+      var label = 'แถว '+(i+2)+' ('+sid+')';
+      if(!hit){ unmatched.push({sid:sid, year:year, name:r['ชื่อ-สกุล (อ้างอิง)']||''}); return; }
+      var set = {}, warn = [];
+      var d = String(r[F.d]||'').trim(), m = String(r[F.m]||'').trim(), y = String(r[F.y]||'').trim(), n = String(r[F.n]||'').replace(/[^0-9]/g,'');
+      if(d){ var dn=parseInt(d,10); if(!(dn>=1&&dn<=31) || String(dn)!==d.replace(/^0+(?=\d)/,'')){ errors.push(label+': วันเกิด "'+d+'" ไม่ถูกต้อง'); return; } set[F.d]=String(dn); }
+      if(m){
+        var mn = /^\d+$/.test(m) ? parseInt(m,10) : (CORR_MONTHS.indexOf(m)+1);
+        if(!(mn>=1&&mn<=12)){ errors.push(label+': เดือนเกิด "'+m+'" ไม่ถูกต้อง'); return; }
+        set[F.m] = /^\d+$/.test(m) ? String(mn) : m;
+      }
+      if(y){ var yn=parseInt(y,10); if(!/^\d{4}$/.test(y) || yn<2480 || yn>2580){ errors.push(label+': ปีเกิด "'+y+'" ไม่ถูกต้อง (ต้องเป็น พ.ศ. 4 หลัก)'); return; } set[F.y]=y; }
+      if(n){ if(!/^\d{13}$/.test(n)){ errors.push(label+': เลขบัตร "'+n+'" ต้องมี 13 หลัก'); return; } if(!corrNidOk(n)) warn.push('เลขบัตรไม่ผ่าน checksum'); set[F.n]=n; }
+      var changes = [];
+      Object.keys(set).forEach(function(k){
+        var old = String((hit.raw||{})[k]||'').trim();
+        if(old !== set[k]) changes.push({key:k, oldV:old, newV:set[k]});
+      });
+      if(changes.length) updates.push({classId:hit.classId, docId:hit.docId, sid:sid, name:hit.fullName, changes:changes, warn:warn});
+    });
+    return {updates:updates, errors:errors, unmatched:unmatched};
+  };
+
+  window.importCorrectionData = function(){
+    var input = document.createElement('input');
+    input.type='file'; input.accept='.xlsx,.xls,.csv'; input.style.display='none';
+    document.body.appendChild(input);
+    input.onchange = async function(ev){
+      var f = ev.target.files[0];
+      if(!f){ input.remove(); return; }
+      try{
+        window.showLoading(true,'กำลังอ่านไฟล์...');
+        var rows = await window.readFileToRows(f);
+        if(!rows.length || Object.keys(rows[0]).indexOf('เลขประจำตัวนักเรียน')<0){
+          window.showLoading(false); window.showToast('ไฟล์ไม่ถูกรูปแบบ — ต้องมีคอลัมน์ "เลขประจำตัวนักเรียน"','error'); input.remove(); return;
+        }
+        var curYear = String((window.AppState.settings||{}).currentAcademicYear||'');
+        var years = {}; rows.forEach(function(r){ years[String(r['ปีการศึกษา']||'').trim()||curYear]=1; });
+        window.showLoading(true,'กำลังจับคู่ข้อมูล...');
+        var index = {};
+        var classes = (window.AppState.classrooms||[]).filter(function(c){ return years[String(c.academicYear)]; });
+        for(var i=0;i<classes.length;i++){
+          var cr = classes[i];
+          var list = await window.getStudentsOfClass(cr.id, true);
+          list.forEach(function(s){
+            var sid = String(s.studentId||'').trim(); if(!sid) return;
+            index[cr.academicYear+'|'+sid] = {classId:cr.id, docId:s.id, fullName:s.fullName||'', raw:s.raw||{}};
+          });
+        }
+        var plan = window.planCorrections(rows, index, curYear);
+        window.showLoading(false);
+        if(plan.errors.length){
+          window.showToast('พบข้อมูลในไฟล์ไม่ถูกต้อง — ไม่มีการแก้ไขใดๆ: '+plan.errors.slice(0,3).join(' | '),'error',9000); input.remove(); return;
+        }
+        if(!plan.updates.length && !plan.unmatched.length){ window.showToast('ไม่มีข้อมูลที่ต้องแก้ (ตรงกับในระบบแล้ว)','info'); input.remove(); return; }
+        var msg = '<div style="margin-bottom:10px">เตรียมแก้ไขข้อมูลนักเรียน <strong style="color:#16a34a">'+plan.updates.length+'</strong> คน (แก้เฉพาะช่องที่ระบุ)</div>';
+        msg += '<div style="max-height:260px;overflow:auto;background:#f9fafb;border:1px solid #e5e7eb;border-radius:8px;padding:8px;font-size:12px;line-height:1.6">';
+        plan.updates.forEach(function(u){
+          msg += '<div>• '+window.escHTML(u.name)+' ('+window.escHTML(u.sid)+')';
+          u.changes.forEach(function(c){ msg += '<br>&nbsp;&nbsp;'+window.escHTML(c.key)+': <span style="color:#9ca3af">'+window.escHTML(c.oldV||'(ว่าง)')+'</span> → <strong style="color:#16a34a">'+window.escHTML(c.newV)+'</strong>'; });
+          if(u.warn.length) msg += '<br>&nbsp;&nbsp;<span style="color:#b45309">⚠️ '+window.escHTML(u.warn.join(', '))+'</span>';
+          msg += '</div>';
+        });
+        msg += '</div>';
+        if(plan.unmatched.length){
+          msg += '<div style="margin-top:10px;padding:8px;background:#fef3c7;border-radius:8px;color:#92400e;font-size:12px">⚠️ ไม่พบในระบบ '+plan.unmatched.length+' คน (จะข้าม):';
+          plan.unmatched.slice(0,5).forEach(function(u){ msg += '<br>• '+window.escHTML(u.name)+' ('+window.escHTML(u.sid)+' ปี '+window.escHTML(u.year)+')'; });
+          msg += '</div>';
+        }
+        var ok = await window.confirmDialog({title:'ยืนยันแก้ไขข้อมูล', message:msg, confirmText:'แก้ไขทั้งหมด', cancelText:'ยกเลิก'});
+        if(!ok){ input.remove(); return; }
+        window.showLoading(true,'กำลังบันทึก...');
+        var fns = window.firestore, done = 0;
+        for(var j=0;j<plan.updates.length;j++){
+          var u = plan.updates[j];
+          var ref = fns.doc(window.db,'classrooms',u.classId,'students',u.docId);
+          var snap = await fns.getDoc(ref);
+          if(!snap.exists()) continue;
+          var newRaw = Object.assign({}, snap.data().raw||{});
+          u.changes.forEach(function(c){ newRaw[c.key] = c.newV; });
+          await fns.updateDoc(ref, {raw:newRaw, updatedAt:fns.serverTimestamp()});   // แตะแค่ raw + updatedAt
+          done++;
+        }
+        window.AppState.studentsCache = {};
+        window.showLoading(false);
+        window.showToast('แก้ไขข้อมูลเรียบร้อย '+done+' คน','success');
+        if(window.refreshCurrentView) window.refreshCurrentView();
+      }catch(e){
+        console.error(e); window.showLoading(false); window.showToast('ผิดพลาด: '+e.message,'error');
+      }finally{ input.remove(); }
     };
     input.click();
   };
