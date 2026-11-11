@@ -2725,8 +2725,8 @@ window.deleteStudent = async function(classId, studentDocId){
     (function(){
       var body = bd.querySelector('.modal-body');
       var secs = Array.prototype.slice.call(body.children).filter(function(e){ return e.classList.contains('set-section'); });
-      var groups = [['⚙️ ทั่วไป',[0,1]],['👥 นักเรียน',[2,3,4,8,9,10]],['📄 เอกสาร / ฟอร์ม',[5,6,7]],['💾 ระบบ',[11,12]]];
-      if(secs.length!==13) return; // โครงสร้างเปลี่ยน → ไม่จัดแท็บ (แสดงแบบเดิม)
+      var groups = [['⚙️ ทั่วไป',[0,1]],['👥 นักเรียน',[2,3,4,8,9,10,11]],['📄 เอกสาร / ฟอร์ม',[5,6,7]],['💾 ระบบ',[12,13]]];
+      if(secs.length!==14) return; // โครงสร้างเปลี่ยน → ไม่จัดแท็บ (แสดงแบบเดิม)
       var bar = document.createElement('div'); bar.className = 'tk-tabs';
       var panels = groups.map(function(g, gi){
         var pn = document.createElement('div'); pn.className = 'tk-tabpanel'; pn.style.display = gi===0 ? '' : 'none';
